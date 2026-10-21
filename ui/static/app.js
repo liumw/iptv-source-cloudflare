@@ -191,6 +191,25 @@ async function loadChannelOptions(modal) {
     number.setAttribute("aria-label", number.title);
     if (channel.chno == null) number.classList.add("is-empty");
 
+    const logo = document.createElement("span");
+    logo.className = "channel-logo channel-picker-logo";
+    logo.setAttribute("aria-hidden", "true");
+    const fallback = document.createElement("span");
+    fallback.className = "logo-fallback";
+    fallback.textContent = "TV";
+    logo.append(fallback);
+    let logoImage = null;
+    if (channel.logo) {
+      logoImage = document.createElement("img");
+      logoImage.setAttribute("data-channel-logo", "");
+      logoImage.alt = "";
+      logoImage.loading = "lazy";
+      logoImage.decoding = "async";
+      logoImage.referrerPolicy = "no-referrer";
+      logoImage.src = channel.logo;
+      logo.append(logoImage);
+    }
+
     const name = document.createElement("span");
     name.className = "channel-name";
     name.textContent = channel.name;
@@ -199,7 +218,7 @@ async function loadChannelOptions(modal) {
     meta.className = "channel-meta";
     meta.textContent = `${channel.group} · ${channel.key}`;
 
-    label.append(box, number, name);
+    label.append(box, number, logo, name);
     if (channel.adult) {
       const badge = document.createElement("span");
       badge.className = "badge bad";
@@ -208,6 +227,7 @@ async function loadChannelOptions(modal) {
     }
     label.append(meta);
     list.append(label);
+    if (logoImage?.complete) updateChannelLogo(logoImage);
   });
 
   const search = modal.querySelector("#channel-search");

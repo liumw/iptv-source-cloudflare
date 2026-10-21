@@ -72,6 +72,7 @@ before(async () => {
   await db.exec(
     `UPDATE streams SET attrs_json='{"attrs":{"tvg-chno":"555"}}' WHERE channel_id IN (2,4)`,
   );
+  await db.exec("UPDATE channels SET logo='https://example.com/one.png' WHERE id=1");
 });
 after(async () => {
   await mf?.dispose();
@@ -90,6 +91,11 @@ for (const mode of ['auto', 'fixed', 'none'])
       options.channels.slice(0, 3).map((channel: any) => channel.id),
       [3, 1, 4],
     );
+    assert.equal(
+      options.channels.find((channel: any) => channel.id === 1).logo,
+      'https://example.com/one.png',
+    );
+    assert.equal(options.channels.find((channel: any) => channel.id === 3).logo, null);
     await db
       .prepare('UPDATE profiles SET config_json=? WHERE id=1')
       .bind(

@@ -735,6 +735,7 @@ admin.get('/_admin/profiles/:slug/channel-options', async (c) => {
       name: ch.name,
       key: ch.key,
       chno: ch.chno,
+      logo: ch.logo || null,
       group: ch.group?.name ?? '未分组',
       adult: !!ch.adult,
     })),
