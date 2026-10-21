@@ -56,6 +56,8 @@ app.get('/favicon.ico', (c) => c.redirect('/static/favicon.svg', 302));
 app.use('/_api/*', async (c, next) => {
   const user = await currentUser(c.get('store'), c.req.raw, c.env.SESSION_SECRET);
   if (!user) return c.json({ detail: 'unauthorized' }, 401);
+  if (user.must_change_password)
+    return c.json({ detail: 'password_change_required', redirect: '/_admin/change-password' }, 403);
   c.set('user', user);
   await next();
 });

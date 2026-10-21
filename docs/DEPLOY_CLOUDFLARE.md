@@ -6,57 +6,53 @@
 
 [![一键部署到 Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fliumw%2Fiptv-source-cloudflare)
 
-这是 Cloudflare 官方部署向导入口：创建自己的仓库副本、Worker、D1，并完成构建发布。首次管理员需另外生成和导入；部署后的频道库为空。希望手动创建 D1 或使用已有数据库时，可直接从下方第 1 步开始。
+这是 Cloudflare 官方部署向导入口：创建自己的仓库副本、Worker、D1，并自动完成建表、管理员初始化和发布。**无需安装本机工具、执行命令或导入 SQL。** 初始频道库为空，不内置任何源。
 
-1. 先按下方第 1 步安装工具并克隆项目，再执行 `pnpm init:admin`，生成自己的管理员 SQL、随机密码和会话密钥。
-2. 点击按钮，登录自己的 Cloudflare，连接 GitHub，确认仓库副本名称、Worker 名称和 D1 名称。若已经 Fork，使用下面的链接，将 `YOUR-GITHUB-USERNAME` 和仓库名换成自己的实际值；官方向导会从指定仓库创建副本，若名称已存在，选择另一个名称。若要直接绑定已有 Fork 而不创建副本，使用第 6B 节。
+1. 点击上方按钮，登录自己的 Cloudflare，连接 GitHub，确认仓库副本名称、Worker 名称和 D1 名称。保持 D1 绑定名称为 **DB**。
+2. 在向导的 `SESSION_SECRET` 中填写你自己生成的至少 32 字符随机字符串，不含引号，可使用密码管理器生成。它是运行时 Secret，不是管理员密码；请私下保存。
+3. 构建命令使用 `pnpm build`，部署命令使用 **`pnpm run deploy`**。Node.js 使用 24、pnpm 使用 11（需要时设置构建变量 `NODE_VERSION=24`、`PNPM_VERSION=11.25.0`）。确认后部署。
+4. 向导创建 D1 并更新新仓库配置；构建脚本自动应用 migrations，再初始化空库，成功后发布 Worker。任一步失败都会停止发布。
+5. 部署成功后打开 `https://你的 Worker 域名/_admin`，用户名 **`admin`**、密码 **`admin123`**。
+6. 首次登录进入修改初始密码页面。填写当前密码 `admin123` 和至少 12 位的新密码，保存后使用新密码重新登录。修改前不能进入其他后台页面或调用管理 API。
+7. 进入空频道库后，手动添加频道或导入自己的播放列表。
 
-   ```text
-   https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR-GITHUB-USERNAME/iptv-source-cloudflare
-   ```
+自动初始化只写入一个管理员、基础设置、一个空内容视图，以及一个带随机 token 的自动识别订阅。每个数据库独立生成密码盐和订阅 token。后续构建仍检查初始化条件，**只要已有任意管理员，全部初始化语句均跳过**，不重置密码、不重新生成订阅、不覆盖设置，也不会恢复用户删除的内容视图或订阅。
 
-   Markdown 按钮的链接是静态地址，Fork 后不会自动改成你的用户名。要让自己 Fork 的首页按钮使用自己的代码，请编辑 README 按钮和文字链接中的 `url` 参数。
+### 使用自己的 Fork
 
-3. 在向导的 `SESSION_SECRET` 中填入本机 `.dev.vars` 内生成的密钥值，不含引号，至少 32 字符。它是运行时 Secret，不是管理员密码。不要提交该文件。
-4. 构建命令使用 `pnpm build`，部署命令使用 `pnpm run deploy`；Node.js 使用 24、pnpm 使用 11（需要时在构建变量中设置 `NODE_VERSION=24`、`PNPM_VERSION=11.25.0`）。保留 D1 绑定名称 **DB**。确认后部署。
-5. 向导会创建你自己的 D1 并更新新仓库的 `wrangler.jsonc`。部署脚本在 Workers Builds 中先运行 `wrangler d1 migrations apply DB --remote`，再发布 Worker；只创建空表，不导入账号或源。若这一步失败，后续发布会停止。
-6. 将向导最终创建的仓库克隆到本机（或拉取其最新配置），确认 `wrangler.jsonc` 的真实 D1 ID 与 Worker 的 `DB` 绑定一致。把第 1 步生成的 `private/bootstrap.sql` 私下放到这个仓库副本的 `private/` 下；若使用同一本机目录，保留已有文件即可。不要再次生成一套凭据。
+按钮的链接是静态地址，Fork 后不会自动改成你的用户名。请将部署链接中的仓库地址替换为自己的 Fork：
 
-   ```sh
-   pnpm install --frozen-lockfile
-   pnpm exec wrangler login
-   pnpm db:init:remote
-   ```
+```text
+https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR-GITHUB-USERNAME/iptv-source-cloudflare
+```
 
-   确认 Wrangler 登录的是同一个 Cloudflare 账号。也可以在此 D1 的 Console 执行 `private/bootstrap.sql` 的 INSERT 语句。表结构已自动建立，不再手动执行 `0001_schema.sql`。管理员 SQL 只导入一次。
+官方向导会从指定仓库创建副本，若名称已存在，选择另一个名称。要让 Fork 首页的按钮使用自己的代码，请编辑 README 按钮和文字链接中的 `url` 参数。要直接绑定已有 Fork 而不创建副本，使用下方第 6B 节；同样会自动初始化无管理员的数据库。
 
-7. 打开自己的 Worker 地址加 `/_admin`，用 `private/bootstrap.credentials.txt` 的账号密码登录，再添加自己的源。若后台返回 503，在 Worker 的 **Settings → Variables and Secrets** 检查 `SESSION_SECRET` 是否为至少 32 字符的运行时 Secret。
-
-后续推送使用 `pnpm run deploy` 的 Workers Builds 会先应用新增的 schema 迁移，保留运行时 Secret 和已有管理员，不重复导入初始化 SQL。本机 `pnpm run deploy` 仍要求有效的 `.dev.vars`；云端通过官方注入的 `WORKERS_CI=1` 识别构建环境。
+`SESSION_SECRET` 始终需要在向导或 Worker 运行时配置。GitHub 和 Cloudflare 登录、App 授权由部署者在官方页面完成。本机 `pnpm run deploy` 仍使用有效的 `.dev.vars`；其手动自定义账号流程见第 1–6A 节。云端通过官方注入的 `WORKERS_CI=1` 识别 Workers Builds 环境。
 
 官方参考：[Deploy to Cloudflare 按钮与资源、密钥配置](https://developers.cloudflare.com/workers/platform/deploy-buttons/)、[Workers Builds 环境变量](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#default-variables)。
 
 ### 端到端实测（2026-10-21）
 
-已从公开仓库的官方按钮创建全新的仓库副本、Worker 和 D1，完成实际云端构建、管理员 SQL 导入及浏览器公网登录。测试使用同一 Cloudflare 账号内的独立资源，没有复用现有应用的数据库、管理员或会话密钥；不是第二个 Cloudflare 账号或 GitHub 原生 Fork 的跨账号实测。官方向导创建的是仓库副本；已有 Fork 的入口和连接方法见上方说明。
+此前已通过官方按钮创建仓库副本、独立 Worker 和 D1，并完成公网登录及 Git 自动重部署。本次自动账号版本在该独立测试 Worker 上绑定**另一份全新空 D1**，通过 Git 推送触发真实 Workers Builds；没有手动执行管理员导入 SQL。测试在同一 Cloudflare 账号内完成，不是第二个账号或 GitHub 原生 Fork 的跨账号实测。
 
 | 实测项目 | 结果 |
 | --- | --- |
-| 官方部署向导 | 自动读取 D1、Secret 说明及 `pnpm run build` / `pnpm run deploy` |
-| 云端工具链 | 自动识别 Node.js 24、pnpm 11，按锁文件安装成功 |
-| 资源创建 | 新 Worker、新 D1；真实 D1 ID 自动写回新仓库配置 |
-| 自动建表 | 构建日志显示 `0001_schema.sql` 成功，远程 `d1_migrations` 记录一致 |
-| 导入前数据 | 管理员、源、频道、线路均为 0 |
-| 独立初始化 | 本机生成随机密码、哈希和 token，`pnpm db:init:remote` 导入成功 |
-| 导入后数据 | 1 个管理员、1 个内容视图、1 个自动订阅；源、频道、线路、固定网络环境均为 0 |
-| 公网登录 | 浏览器使用独立管理员登录成功，显示空频道库及初始化密码提示 |
-| HTTP 验收 | `/health` 连接 D1 成功；未登录 API 和错误密码均返回 401 |
-| 会话及订阅 | Cookie 含 Secure / HttpOnly / SameSite；无 token 订阅返回 403，有效 token 返回空 M3U 和自动识别标记；退出后会话失效 |
-| Git 自动重部署 | 推送说明修改后自动构建成功，日志显示无新增迁移；原管理员、订阅 token 和浏览器登录会话保留，迁移记录仍为 1 条 |
+| Git 云端构建 | Node.js 24、pnpm 11，锁文件安装成功；运行 pnpm run deploy |
+| 自动建表 | 新 D1 自动应用 0001_schema.sql；迁移记录 1 条 |
+| 自动账号 | admin / admin123 登录成功，浏览器自动进入修改初始密码页面 |
+| 初始数据 | 1 个管理员、1 个空内容视图、1 个随机 token 的自动识别订阅；源、频道、线路和固定网络环境均为 0 |
+| 首次改密限制 | 其他后台页面和写操作重定向改密；管理 API 返回 403 |
+| 修改密码 | 设置独立新密码成功；旧密码及旧会话失效，新密码登录后显示空后台 |
+| 订阅 | 无 token 返回 403，有效 token 返回空 M3U 和自动识别响应头 |
+| 再次 Git 自动部署 | 构建成功；新密码、原订阅 token、既有会话及各表计数保留，未生成重复账号或配置 |
+| 本地回归 | 21 项测试全部通过，覆盖自定义账号保留、失败停止发布、初始化文件清理、频道管理与网络筛选 |
 
-首次部署和 Git 自动重部署后，均执行了 8 项实际 HTTP 验收，全部通过。账号登录、App 授权和首次管理员 SQL 导入仍需部署者完成；不提供公共默认密码，也不将管理员初始化写进每次构建。此次遇到的 GitHub App 旧授权过期在重装授权后恢复，处理方法见本文常见问题。
+部署者只需在官方页面完成登录、GitHub App 授权和会话密钥填写，然后使用默认账号登录并修改密码。若遇到 GitHub 授权过期，按文末说明重新授权。
 
 ## 1. Fork 项目并安装工具
+
+以下第 1–6A 节是可选的命令行部署方式，可预先生成独立随机账号密码。一键部署用户直接按上面的网页流程操作，不需要执行这些命令。
 
 在 [仓库首页](https://github.com/liumw/iptv-source-cloudflare) 点击 **Fork → Create fork**。仅 Star / Follow 不会创建应用。
 
@@ -196,11 +192,11 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev
 
 ## 6B. 可选：连接 Fork，使用 Cloudflare 自动构建
 
-也可以在完成 D1 初始化后，通过 Cloudflare 的 Git 集成发布。先把第 3 步的数据库配置提交到**自己的 Fork**；不要提交 `private/` 或 `.dev.vars`。
+也可以在手动创建 D1 后，通过 Cloudflare 的 Git 集成发布；可以跳过第 4–5 节，云端构建会自动建表并初始化 admin / admin123。如果已经手动导入了自定义管理员，自动初始化会跳过。先把第 3 步的数据库配置提交到**自己的 Fork**；不要提交 `private/` 或 `.dev.vars`。
 
 1. 在 Cloudflare 的 **Workers & Pages → Create application** 中选择导入 Git 仓库的入口，连接 GitHub 并选择自己的 Fork。
 2. 使用与 `wrangler.jsonc` 中 `name` 相同的 Worker 名称，生产分支选 `main`。
-3. 根目录使用仓库根目录 `/`。构建命令填写 `pnpm build`，部署命令填写 `pnpm run deploy`，自动先应用 D1 迁移再发布。
+3. 根目录使用仓库根目录 `/`。构建命令填写 `pnpm build`，部署命令填写 `pnpm run deploy`，自动应用 D1 迁移、初始化无管理员的数据库，然后发布。
 4. 在构建配置中设置 `NODE_VERSION=24`、`PNPM_VERSION=11.25.0`；依赖安装使用 `pnpm install --frozen-lockfile`（若界面可指定安装命令）。
 5. 部署完成后，进入 Worker 的 **Settings → Variables and Secrets → Add**，选择 **Secret**，名称填 `SESSION_SECRET`，值填本机 `.dev.vars` 中生成的密钥值，**不包括引号**；点击 **Deploy**。
 6. 在 Worker 的 Bindings 确认存在名为 `DB` 的 D1 绑定，指向自己创建的数据库。代码中的 Wrangler 配置应已经建立该绑定；若手动补充，也使用这个名称。
@@ -209,15 +205,15 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev
 
 `SESSION_SECRET` 必须存在于 Worker 的**运行时** Variables and Secrets；仅在 Build 变量里填写同名字段不会自动成为运行时密钥。密钥添加前，后台会返回 503，这是配置尚未完成的提示。
 
-Cloudflare Git 构建使用平台运行时 Secret，不要求远端构建环境存在本机 `.dev.vars`。后续代码推送会先应用新增 migrations，再发布，现有运行时 Secret 会保留。不要在每次构建中重导管理员。
+Cloudflare Git 构建使用平台运行时 Secret，不要求远端构建环境存在本机 `.dev.vars`。后续代码推送会先应用新增 migrations，再发布，现有运行时 Secret 会保留。默认初始化包含空库检查，不会重置已有管理员或其他配置。
 
 官方参考：[Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/)、[控制台配置运行时 Secret](https://developers.cloudflare.com/workers/configuration/secrets/#via-the-dashboard)。
 
 ## 7. 首次登录并添加自己的源
 
 1. 打开 `https://你的域名/_admin`。
-2. 使用 `private/bootstrap.credentials.txt` 中的账号密码登录。
-3. 可在系统设置修改初始密码，修改后重新登录。
+2. 一键部署或直接 Git 自动构建：使用 `admin / admin123`；手动初始化：使用 `private/bootstrap.credentials.txt` 中的账号密码。
+3. 首次登录必须修改初始密码（新密码至少 12 位），保存后重新登录。以后可在系统设置再次修改密码。
 4. 在频道库点击 **手动添加频道**，填写名称、台号、分组、地区、台标和可选播放地址，无需先创建源；播放地址留空时，可稍后在频道详情添加线路。也可以打开源管理，通过 URL、上传或粘贴导入有权使用的播放列表。
 5. 在待确认和频道库中整理频道，检查线路的网络、运营商和地区标签。
 6. 从订阅管理复制完整订阅地址到播放器。默认 `/live` 需要随机 token；直接访问 `/live` 返回 403 是正常的访问保护。
@@ -232,7 +228,7 @@ Cloudflare Git 构建使用平台运行时 Secret，不要求远端构建环境�
 | --- | --- |
 | `/health` | HTTP 200，数据库类型为 D1 |
 | `/_admin` | 跳转登录或显示后台 |
-| 初始账号登录 | 成功；初始化密码每位部署者独立 |
+| 初始账号登录 | 自动初始化为 admin / admin123，首次登录强制改密；手动初始化使用独立密码 |
 | 后台统计 | 初始 0 个源、0 个频道、0 条线路 |
 | `/live` 无 token | 403 |
 | 后台复制的完整订阅 | 初始为空；添加自己的源后输出符合规则的条目 |
@@ -271,7 +267,7 @@ pnpm exec wrangler d1 export DB --remote --output private/backup-YYYYMMDD.sql
 | 一键部署提示 `Your GitHub authorization has expired` | 这是 Cloudflare 与 GitHub 的账号连接问题，尚未进入项目构建。先按下方说明恢复 App 授权，再重试部署 |
 | `database_id` 占位提示 | 填写自己的 D1 ID，保持 binding 为 `DB` |
 | `no such table` | 确认在正确的账号和远程 D1 执行了 schema；本机库与云端库不同 |
-| 登录失败 | 确认导入了自己的 `private/bootstrap.sql`；用生成文件中的密码；改过密码后使用新密码 |
+| 登录失败 | 一键部署首次使用 admin / admin123；手动初始化使用生成文件中的密码；改过密码后必须使用新密码，重新部署不会重置 |
 | 初始化重复或 UNIQUE 报错 | 管理员 SQL 只导入一次；不要用重复初始化来改密码 |
 | 后台 503 | 在 Worker 运行时设置至少 32 字符的 `SESSION_SECRET` 并部署 |
 | 订阅 403 | 从后台复制包含 token 的完整地址，并检查白名单 |

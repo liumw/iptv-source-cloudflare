@@ -101,11 +101,19 @@ admin.use('*', async (c, next) => {
       303,
     );
   c.set('user', user);
+  if (
+    user.must_change_password &&
+    path !== '/_admin/change-password' &&
+    path !== '/_admin/settings/password' &&
+    path !== '/_admin/logout'
+  )
+    return c.redirect('/_admin/change-password', 303);
   await next();
 });
 admin.get('/_admin/login', async (c) => {
   const user = await currentUser(c.get('store'), c.req.raw, c.env.SESSION_SECRET);
-  if (user) return c.redirect('/_admin', 302);
+  if (user)
+    return c.redirect(user.must_change_password ? '/_admin/change-password' : '/_admin', 302);
   return page(c, 'login.html');
 });
 admin.post('/_admin/login', async (c) => {
@@ -141,8 +149,12 @@ admin.post('/_admin/login', async (c) => {
       new URL(c.req.url).protocol === 'https:',
     ),
   );
-  return c.redirect(safeReturn(text(f, 'next_url')), 303);
+  return c.redirect(
+    user.must_change_password ? '/_admin/change-password' : safeReturn(text(f, 'next_url')),
+    303,
+  );
 });
+admin.get('/_admin/change-password', (c) => page(c, 'change_password.html'));
 admin.post('/_admin/logout', async (c) => {
   const token = await sessionToken(c.req.raw, c.env.SESSION_SECRET);
   if (token) await c.get('store').run('DELETE FROM sessions WHERE token_hash=?', [token]);
@@ -991,11 +1003,14 @@ admin.post('/_admin/settings/password', async (c) => {
     user = c.get('user'),
     security = await import('./security'),
     password = String(f.get('new_password') ?? '');
+  const target = user.must_change_password ? '/_admin/change-password' : '/_admin/settings';
   if (!(await security.verifyPassword(String(f.get('current_password') ?? ''), user.password_hash)))
-    throw new Error('当前密码不正确');
-  if (password.length < 12) throw new Error('云端新密码至少 12 位');
+    return redirect(c, target, undefined, '当前密码不正确');
+  if (password.length < 12) return redirect(c, target, undefined, '云端新密码至少 12 位');
   if (password !== String(f.get('confirm_password') ?? ''))
-    throw new Error('两次输入的新密码不一致');
+    return redirect(c, target, undefined, '两次输入的新密码不一致');
+  if (await security.verifyPassword(password, user.password_hash))
+    return redirect(c, target, undefined, '新密码不能与当前密码相同');
   const store = c.get('store');
   await store.write([
     store.update('admin_users', user.id, {

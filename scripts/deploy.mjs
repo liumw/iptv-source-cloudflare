@@ -1,8 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'jsonc-parser';
+import { createDefaultBootstrap } from './bootstrap-default.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -28,12 +29,24 @@ export async function deploy({ directory = root, env = process.env, run = spawnS
 
   const wrangler = 'node_modules/wrangler/bin/wrangler.js';
   const commands = [['scripts/build.mjs']];
-  if (cloudBuild) commands.push([wrangler, 'd1', 'migrations', 'apply', 'DB', '--remote']);
-  commands.push([wrangler, 'deploy', ...(!cloudBuild ? ['--secrets-file', '.dev.vars'] : [])]);
-  for (const args of commands) {
-    const result = run(process.execPath, args, { stdio: 'inherit', cwd: directory, env });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(`部署步骤失败（退出码 ${result.status ?? 1}）。`);
+  let bootstrapDir;
+  try {
+    if (cloudBuild) {
+      await mkdir(resolve(directory, '.generated'), { recursive: true });
+      bootstrapDir = await mkdtemp(resolve(directory, '.generated', 'initial-admin-'));
+      const file = resolve(bootstrapDir, 'bootstrap.sql');
+      await writeFile(file, createDefaultBootstrap().sql, { mode: 0o600 });
+      commands.push([wrangler, 'd1', 'migrations', 'apply', 'DB', '--remote']);
+      commands.push([wrangler, 'd1', 'execute', 'DB', '--remote', '--file', file]);
+    }
+    commands.push([wrangler, 'deploy', ...(!cloudBuild ? ['--secrets-file', '.dev.vars'] : [])]);
+    for (const args of commands) {
+      const result = run(process.execPath, args, { stdio: 'inherit', cwd: directory, env });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(`部署步骤失败（退出码 ${result.status ?? 1}）。`);
+    }
+  } finally {
+    if (bootstrapDir) await rm(bootstrapDir, { recursive: true, force: true });
   }
 }
 

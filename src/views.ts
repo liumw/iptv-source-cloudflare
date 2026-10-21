@@ -91,6 +91,7 @@ export function render(
         subscriptions: '订阅链接',
         network: '访问者识别',
         settings: '系统设置',
+        change_password: '修改初始密码',
         logs: '访问日志',
       } as Row
     )[name.replace('.html', '')] ?? 'IPTV 管理';

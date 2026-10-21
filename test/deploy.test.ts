@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, access } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { deploy } from '../scripts/deploy.mjs';
 
@@ -23,19 +24,31 @@ test('Cloudflare deploy works without local secrets, migrates the binding before
   const commands: string[][] = [];
   const run = (_node: string, args: string[]) => {
     commands.push(args);
+    if (args.includes('execute')) {
+      const sql = readFileSync(args.at(-1)!, 'utf8');
+      assert.match(sql, /INSERT INTO admin_users/);
+      assert.match(sql, /NOT EXISTS \(SELECT 1 FROM admin_users\)/);
+      assert.doesNotMatch(sql, /admin123/);
+    }
     return { status: 0 };
   };
   await deploy({ directory, env: { WORKERS_CI: '1' }, run });
   assert.deepEqual(
     commands.map((args) => args.slice(1)),
-    [[], ['d1', 'migrations', 'apply', 'DB', '--remote'], ['deploy']],
+    [
+      [],
+      ['d1', 'migrations', 'apply', 'DB', '--remote'],
+      ['d1', 'execute', 'DB', '--remote', '--file', commands[2].at(-1)!],
+      ['deploy'],
+    ],
   );
+  await assert.rejects(() => access(commands[2].at(-1)!));
   assert.ok(!commands.flat().includes('--secrets-file'));
 
   commands.length = 0;
   const emptyDirectory = await fixture();
   await deploy({ directory: emptyDirectory, env: { WORKERS_CI: '1' }, run });
-  assert.equal(commands.length, 3);
+  assert.equal(commands.length, 4);
 });
 
 test('local deploy rejects missing or short secrets and uploads a valid private file', async () => {
@@ -73,4 +86,20 @@ test('placeholder D1 and failed migrations prevent publishing', async () => {
   await assert.rejects(() => deploy({ directory, env: { WORKERS_CI: '1' }, run }), /退出码 1/);
   assert.equal(commands.length, 2);
   assert.ok(!commands.some((args) => args.includes('deploy')));
+});
+
+test('failed default initialization prevents publishing and removes the temporary SQL', async () => {
+  const directory = await fixture();
+  let file = '';
+  const run = (_node: string, args: string[]) => {
+    assert.ok(!args.includes('deploy'));
+    if (args.includes('execute')) {
+      file = args.at(-1)!;
+      return { status: 1 };
+    }
+    return { status: 0 };
+  };
+  await assert.rejects(() => deploy({ directory, env: { WORKERS_CI: '1' }, run }), /退出码 1/);
+  assert.ok(file);
+  await assert.rejects(() => readFile(file));
 });
