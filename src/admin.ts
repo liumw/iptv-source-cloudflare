@@ -52,9 +52,12 @@ function page(c: C, name: string, context: Row = {}) {
 }
 const one = (c: C, table: string, id: unknown) =>
   c.get('store').one(`SELECT * FROM ${table} WHERE id=?`, [int(id)]);
-async function channelRows(store: Store): Promise<Row[]> {
+async function channelRows(store: Store, withStreamLogo = false): Promise<Row[]> {
+  const streamLogo = withStreamLogo
+    ? ",(SELECT s.tvg_logo FROM streams s WHERE s.channel_id=c.id AND NULLIF(s.tvg_logo,'') IS NOT NULL ORDER BY s.is_default DESC,s.priority DESC,s.id LIMIT 1) stream_logo"
+    : '';
   const rows = await store.all(
-    'SELECT c.*,g.name group_name FROM channels c LEFT JOIN groups g ON g.id=c.group_id ORDER BY c.name',
+    `SELECT c.*,g.name group_name${streamLogo} FROM channels c LEFT JOIN groups g ON g.id=c.group_id ORDER BY c.name`,
   );
   return rows.map((c) => ({
     ...c,
@@ -716,7 +719,7 @@ admin.get('/_admin/profiles/:slug/channel-options', async (c) => {
   const store = c.get('store'),
     profile = await store.one('SELECT * FROM profiles WHERE slug=?', [c.req.param('slug')]);
   if (!profile) return c.json({ error: '内容视图不存在' }, 404);
-  const channels = (await channelRows(store))
+  const channels = (await channelRows(store, true))
     .filter((ch) => ch.enabled && (ch.reviewed || !ch.auto_created))
     .sort(
       (a, b) =>
@@ -735,7 +738,7 @@ admin.get('/_admin/profiles/:slug/channel-options', async (c) => {
       name: ch.name,
       key: ch.key,
       chno: ch.chno,
-      logo: ch.logo || null,
+      logo: ch.logo || ch.stream_logo || null,
       group: ch.group?.name ?? '未分组',
       adult: !!ch.adult,
     })),

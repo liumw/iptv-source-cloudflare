@@ -73,6 +73,10 @@ before(async () => {
     `UPDATE streams SET attrs_json='{"attrs":{"tvg-chno":"555"}}' WHERE channel_id IN (2,4)`,
   );
   await db.exec("UPDATE channels SET logo='https://example.com/one.png' WHERE id=1");
+  await db.exec(`UPDATE streams SET tvg_logo='https://example.com/imported.png' WHERE channel_id=1;
+    UPDATE streams SET tvg_logo='https://example.com/auto.png' WHERE channel_id=2;
+    UPDATE streams SET tvg_logo='https://example.com/default.png',is_default=1 WHERE fingerprint='fixed';
+    UPDATE streams SET tvg_logo='https://example.com/backup.png',priority=100 WHERE fingerprint='backup';`);
 });
 after(async () => {
   await mf?.dispose();
@@ -96,6 +100,14 @@ for (const mode of ['auto', 'fixed', 'none'])
       'https://example.com/one.png',
     );
     assert.equal(options.channels.find((channel: any) => channel.id === 3).logo, null);
+    assert.equal(
+      options.channels.find((channel: any) => channel.id === 2).logo,
+      'https://example.com/auto.png',
+    );
+    assert.equal(
+      options.channels.find((channel: any) => channel.id === 4).logo,
+      'https://example.com/default.png',
+    );
     await db
       .prepare('UPDATE profiles SET config_json=? WHERE id=1')
       .bind(
