@@ -7,6 +7,7 @@
 </div>
 
 <section class="panel">
+  <p class="hint">删除源会停止从该来源更新；已导入的频道和播放线路仍保留在频道库，继续用于订阅。需要删除频道或线路时，请到频道库操作。</p>
   <div class="panel-head"><h2>添加源</h2></div><p class="notice">云端不能读取电脑路径。上传文件或粘贴文本后存入 D1；也可配置 URL 源。</p>
   <form method="post" enctype="multipart/form-data" action="/_admin/sources/add">
     <div class="form-grid">
@@ -81,7 +82,7 @@
             <input type="hidden" name="force" value="1">
             <button class="btn small" type="submit">强制</button>
           </form>
-          <form class="inline" method="post" action="/_admin/sources/{{ source.id }}/delete" data-confirm="删除后该源的线路也会一起删除，确定？">
+          <form class="inline" method="post" action="/_admin/sources/{{ source.id }}/delete" data-confirm="删除此源并停止从它更新？已导入的频道和播放线路会保留，继续用于订阅。">
             <button class="btn small danger" type="submit">删除</button>
           </form>
         </td>

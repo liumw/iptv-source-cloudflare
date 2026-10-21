@@ -11,7 +11,7 @@ export async function manualSourceStatement(store: Store) {
   );
   const name = collision ? `手工线路-${crypto.randomUUID().slice(0, 8)}` : '手工线路';
   return store.statement(
-    "INSERT INTO sources(name,origin,format) SELECT ?,'manual','single' WHERE NOT EXISTS(SELECT 1 FROM sources WHERE origin='manual')",
+    "INSERT INTO sources(name,origin,format) SELECT ?,'manual','single' WHERE NOT EXISTS(SELECT 1 FROM sources WHERE origin='manual' AND format!='retained')",
     [name],
   );
 }
@@ -69,7 +69,7 @@ export async function createManualChannel(store: Store, form: FormData) {
     statements.push(
       await manualSourceStatement(store),
       store.statement(
-        "INSERT INTO streams(source_id,channel_id,fingerprint,url,raw_name,network,carrier,region,network_manual,carrier_manual,region_manual,is_default,adult) VALUES((SELECT id FROM sources WHERE origin='manual' ORDER BY id LIMIT 1),(SELECT id FROM channels WHERE key=?),?,?,?,?,?,?,1,1,1,1,?)",
+        "INSERT INTO streams(source_id,channel_id,fingerprint,url,raw_name,network,carrier,region,network_manual,carrier_manual,region_manual,is_default,adult) VALUES((SELECT id FROM sources WHERE origin='manual' AND format!='retained' ORDER BY id LIMIT 1),(SELECT id FROM channels WHERE key=?),?,?,?,?,?,?,1,1,1,1,?)",
         [
           key,
           (await sha256(url + crypto.randomUUID())).slice(0, 40),

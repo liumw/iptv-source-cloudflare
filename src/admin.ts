@@ -25,6 +25,7 @@ import {
 } from './network';
 import { configFor, normalizePath, validatePath, renderPlaylist } from './playlist';
 import { ingestSource, normalizeKey, similarity, decodePlaylist } from './ingest';
+import { deleteSource } from './sources';
 import {
   ChannelInputError,
   createManualChannel,
@@ -264,13 +265,15 @@ admin.post('/_admin/sources/:id/fetch', async (c) => {
   );
 });
 admin.post('/_admin/sources/:id/delete', async (c) => {
-  const store = c.get('store');
-  await store.write([
-    store.statement("DELETE FROM sources WHERE id=? AND origin!='manual'", [
-      int(c.req.param('id')),
-    ]),
-  ]);
-  return redirect(c, '/_admin/sources', '源已删除');
+  const value = c.req.param('id');
+  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))
+    return redirect(c, '/_admin/sources', undefined, '源 ID 无效');
+  const removed = await deleteSource(c.get('store'), Number(value));
+  return redirect(
+    c,
+    '/_admin/sources',
+    removed ? '源已删除，频道及播放线路已保留' : '源不存在或已删除',
+  );
 });
 
 admin.get('/_admin/channels', async (c) => {
@@ -474,7 +477,7 @@ admin.post('/_admin/channels/:id/streams/add', async (c) => {
     );
   statements.push(
     store.statement(
-      "INSERT INTO streams(source_id,channel_id,fingerprint,url,raw_name,network,carrier,region,priority,is_default,adult,network_manual,carrier_manual,region_manual) VALUES((SELECT id FROM sources WHERE origin='manual' ORDER BY id LIMIT 1),?,?,?,?,?,?,?,?,?,?,1,1,1)",
+      "INSERT INTO streams(source_id,channel_id,fingerprint,url,raw_name,network,carrier,region,priority,is_default,adult,network_manual,carrier_manual,region_manual) VALUES((SELECT id FROM sources WHERE origin='manual' AND format!='retained' ORDER BY id LIMIT 1),?,?,?,?,?,?,?,?,?,?,1,1,1)",
       [
         channel.id,
         (await sha256(url + crypto.randomUUID())).slice(0, 40),
