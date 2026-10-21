@@ -26,6 +26,8 @@
 
 **完整操作步骤：[Cloudflare 部署教程](docs/DEPLOY_CLOUDFLARE.md)**。包含 D1 控制台建库、管理员 SQL 导入、命令行部署、连接 Fork 自动构建、密钥配置及常见故障排查。
 
+已完成真实云端部署、D1 自动建表、独立管理员初始化和公网登录验证，详见[端到端实测记录](docs/DEPLOY_CLOUDFLARE.md#端到端实测2026-10-21)。
+
 运行要求：Node.js 24、pnpm 11、Git、GitHub 和 Cloudflare 账号。项目代码以 MIT 协议开放；第三方播放器的许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 功能

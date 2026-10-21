@@ -36,6 +36,26 @@
 
 官方参考：[Deploy to Cloudflare 按钮与资源、密钥配置](https://developers.cloudflare.com/workers/platform/deploy-buttons/)、[Workers Builds 环境变量](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#default-variables)。
 
+### 端到端实测（2026-10-21）
+
+已从公开仓库的官方按钮创建全新的仓库副本、Worker 和 D1，完成实际云端构建、管理员 SQL 导入及浏览器公网登录。测试使用同一 Cloudflare 账号内的独立资源，没有复用现有应用的数据库、管理员或会话密钥；不是第二个 Cloudflare 账号或 GitHub 原生 Fork 的跨账号实测。官方向导创建的是仓库副本；已有 Fork 的入口和连接方法见上方说明。
+
+| 实测项目 | 结果 |
+| --- | --- |
+| 官方部署向导 | 自动读取 D1、Secret 说明及 `pnpm run build` / `pnpm run deploy` |
+| 云端工具链 | 自动识别 Node.js 24、pnpm 11，按锁文件安装成功 |
+| 资源创建 | 新 Worker、新 D1；真实 D1 ID 自动写回新仓库配置 |
+| 自动建表 | 构建日志显示 `0001_schema.sql` 成功，远程 `d1_migrations` 记录一致 |
+| 导入前数据 | 管理员、源、频道、线路均为 0 |
+| 独立初始化 | 本机生成随机密码、哈希和 token，`pnpm db:init:remote` 导入成功 |
+| 导入后数据 | 1 个管理员、1 个内容视图、1 个自动订阅；源、频道、线路、固定网络环境均为 0 |
+| 公网登录 | 浏览器使用独立管理员登录成功，显示空频道库及初始化密码提示 |
+| HTTP 验收 | `/health` 连接 D1 成功；未登录 API 和错误密码均返回 401 |
+| 会话及订阅 | Cookie 含 Secure / HttpOnly / SameSite；无 token 订阅返回 403，有效 token 返回空 M3U 和自动识别标记；退出后会话失效 |
+| Git 自动重部署 | 推送说明修改后自动构建成功，日志显示无新增迁移；原管理员、订阅 token 和浏览器登录会话保留，迁移记录仍为 1 条 |
+
+首次部署和 Git 自动重部署后，均执行了 8 项实际 HTTP 验收，全部通过。账号登录、App 授权和首次管理员 SQL 导入仍需部署者完成；不提供公共默认密码，也不将管理员初始化写进每次构建。此次遇到的 GitHub App 旧授权过期在重装授权后恢复，处理方法见本文常见问题。
+
 ## 1. Fork 项目并安装工具
 
 在 [仓库首页](https://github.com/liumw/iptv-source-cloudflare) 点击 **Fork → Create fork**。仅 Star / Follow 不会创建应用。
