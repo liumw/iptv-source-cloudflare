@@ -298,7 +298,7 @@ admin.get('/_admin/channels', async (c) => {
     pages = Math.max(1, Math.ceil(total / 100)),
     pageNo = Math.min(pages, Math.max(1, int(c.req.query('page'), 1)));
   const rows = await store.all(
-    `SELECT c.*,g.name group_name,count(s.id) stream_count FROM channels c LEFT JOIN groups g ON g.id=c.group_id LEFT JOIN streams s ON s.channel_id=c.id ${clause} GROUP BY c.id ORDER BY c.name LIMIT 100 OFFSET ?`,
+    `SELECT c.*,g.name group_name,count(s.id) stream_count FROM channels c LEFT JOIN groups g ON g.id=c.group_id LEFT JOIN streams s ON s.channel_id=c.id ${clause} GROUP BY c.id ORDER BY c.chno IS NULL,c.chno,c.name,c.id LIMIT 100 OFFSET ?`,
     [...args, (pageNo - 1) * 100],
   );
   return page(c, 'channels.html', {
