@@ -38,6 +38,12 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target.matches("[data-review-check-all]")) {
+    document.querySelectorAll('input.review-select[form="review-batch-form"]').forEach(box => { box.checked = event.target.checked; });
+    updatePendingSelection();
+  } else if (event.target.matches(".review-select")) {
+    updatePendingSelection();
+  }
   if (event.target.id === "review-merge-target") {
     loadReviewMerge(event.target.closest(".modal"), event.target.value);
   }
@@ -82,8 +88,22 @@ document.addEventListener("click", async (event) => {
   const reviewOpener = event.target.closest("[data-review-open]");
   if (reviewOpener) {
     const modal = document.getElementById("review-merge-modal");
+    const deleting = reviewOpener.dataset.reviewMode === "delete";
+    modal.dataset.mode = deleting ? "delete" : "merge";
     modal.dataset.reviewUrl = `/_admin/review/${reviewOpener.dataset.reviewOpen}/merge-options`;
-    modal.querySelector("form").action = `/_admin/review/${reviewOpener.dataset.reviewOpen}/merge`;
+    const form = modal.querySelector("form");
+    form.action = `/_admin/review/${reviewOpener.dataset.reviewOpen}/${deleting ? "streams/delete" : "merge"}`;
+    if (deleting) form.dataset.confirm = "永久删除勾选的待确认线路？此操作无法恢复。删除全部线路后会清理空的待确认频道，正式频道不受影响。";
+    else form.removeAttribute("data-confirm");
+    modal.querySelector("#review-modal-title").textContent = deleting ? "管理待确认线路" : "选择要合并的线路";
+    modal.querySelector("#review-target-tools").hidden = deleting;
+    modal.querySelector("#review-existing-panel").hidden = deleting;
+    modal.querySelector("#review-merge-target").required = !deleting;
+    modal.querySelector("#review-select-all").textContent = deleting ? "全选待确认线路" : "全选可合并线路";
+    const submit = modal.querySelector("#review-merge-submit");
+    submit.textContent = deleting ? "永久删除所选线路" : "合并所选线路";
+    submit.classList.toggle("danger", deleting);
+    submit.classList.toggle("primary", !deleting);
     openModal(modal);
     await loadReviewMerge(modal, reviewOpener.dataset.targetId || "");
     return;
@@ -148,8 +168,22 @@ function closeModal(modal) {
 }
 
 let reviewMergeRequest = 0;
+function updatePendingSelection() {
+  const boxes = [...document.querySelectorAll('input.review-select[form="review-batch-form"]')];
+  const selected = boxes.filter(box => box.checked).length;
+  document.querySelectorAll("[data-review-count]").forEach(counter => { counter.textContent = selected; });
+  document.querySelectorAll("[data-review-batch-action]").forEach(button => { button.disabled = !selected; });
+  const all = document.querySelector("[data-review-check-all]");
+  if (all) {
+    all.checked = boxes.length > 0 && selected === boxes.length;
+    all.indeterminate = selected > 0 && selected < boxes.length;
+  }
+}
+updatePendingSelection();
+
 async function loadReviewMerge(modal, targetID) {
   const requestID = ++reviewMergeRequest;
+  const deleting = modal.dataset.mode === "delete";
   const targetSelect = modal.querySelector("#review-merge-target");
   const notice = modal.querySelector("#review-merge-notice");
   const incoming = modal.querySelector("#review-incoming-lines");
@@ -170,14 +204,14 @@ async function loadReviewMerge(modal, targetID) {
     targetSelect.replaceChildren(new Option("请选择正式频道", ""));
     for (const channel of data.targets) targetSelect.add(new Option(`${channel.chno == null ? "未设台号" : "台号 " + channel.chno} · ${channel.name}`, channel.id));
     targetSelect.value = data.target ? String(data.target.id) : "";
-    targetSelect.disabled = false;
-    modal.querySelector("#review-merge-subtitle").textContent = `待确认：${data.pending.name}。请选择要并入正式频道的线路。`;
+    targetSelect.disabled = deleting;
+    modal.querySelector("#review-merge-subtitle").textContent = `待确认：${data.pending.name}。${deleting ? "勾选不需要的线路后删除。" : "请选择要并入正式频道的线路。"}`;
     modal.querySelector("#review-incoming-title").textContent = `待确认线路（${data.incoming.length}）`;
     modal.querySelector("#review-existing-title").textContent = data.target ? `${data.target.name} · 已有线路（${data.existing.length}）` : "目标已有线路";
-    renderReviewLines(incoming, data.incoming, true, !!data.target);
+    renderReviewLines(incoming, data.incoming, true, deleting || !!data.target, deleting);
     renderReviewLines(existing, data.existing, false, !!data.target);
-    notice.textContent = data.target ? "只移动勾选的线路；未选线路继续待确认。与目标重复的线路不可重复合并。" : data.targets.length ? "先选择正式目标频道，再对照并勾选线路。" : "正式频道库为空，请先将频道确认为新频道。";
-    modal.querySelector("#review-select-all").disabled = !data.target;
+    notice.textContent = deleting ? "只永久删除勾选的待确认线路，正式频道不受影响。源重新导入时条目可能再次出现。" : data.target ? "只移动勾选的线路；未选线路继续待确认。与目标重复的线路不可重复合并。" : data.targets.length ? "先选择正式目标频道，再对照并勾选线路。" : "正式频道库为空，请先将频道确认为新频道。";
+    modal.querySelector("#review-select-all").disabled = !deleting && !data.target;
     updateReviewMergeCount();
   } catch (error) {
     if (requestID !== reviewMergeRequest) return;
@@ -186,7 +220,7 @@ async function loadReviewMerge(modal, targetID) {
   }
 }
 
-function renderReviewLines(container, lines, selectable, hasTarget) {
+function renderReviewLines(container, lines, selectable, hasTarget, deleting = false) {
   if (!lines.length) {
     const empty = document.createElement("p");
     empty.className = "empty";
@@ -201,8 +235,8 @@ function renderReviewLines(container, lines, selectable, hasTarget) {
       box.type = "checkbox";
       box.name = "stream_ids";
       box.value = line.id;
-      box.disabled = !hasTarget || line.duplicate;
-      box.setAttribute("aria-label", `合并线路 ${line.id}：${line.name || line.source}`);
+      box.disabled = !hasTarget || (!deleting && line.duplicate);
+      box.setAttribute("aria-label", `${deleting ? "删除" : "合并"}线路 ${line.id}：${line.name || line.source}`);
       row.append(box);
     }
     const content = document.createElement("div");
@@ -230,8 +264,9 @@ function updateReviewMergeCount() {
   if (!modal) return;
   const chosen = modal.querySelectorAll('input[name="stream_ids"]:checked').length;
   const total = modal.querySelectorAll('input[name="stream_ids"]').length;
-  modal.querySelector("#review-merge-count").textContent = `已选 ${chosen} / ${total} 条；未选线路继续待确认。`;
-  modal.querySelector("#review-merge-submit").disabled = !chosen || !modal.querySelector("#review-merge-target").value;
+  const deleting = modal.dataset.mode === "delete";
+  modal.querySelector("#review-merge-count").textContent = `已选 ${chosen} / ${total} 条；${deleting ? "删除全部线路会清理空频道。" : "未选线路继续待确认。"}`;
+  modal.querySelector("#review-merge-submit").disabled = !chosen || (!deleting && !modal.querySelector("#review-merge-target").value);
 }
 
 async function loadChannelOptions(modal) {

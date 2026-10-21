@@ -298,3 +298,119 @@ test('merging every selected line removes the empty candidate and rejects stale 
     err(await post(`/_admin/review/${id}/merge`, { target_id: '1', stream_ids: [String(line)] })),
   );
 });
+
+test('pending deletion validates selections atomically, clears empty candidates and protects official records', async () => {
+  await db.exec(`INSERT INTO channels(id,key,name,chno,logo,reviewed) VALUES(100,'delete-guard','正式保护频道',100,'https://example.com/guard.png',1);
+    INSERT INTO channel_aliases(channel_id,alias,alias_norm) VALUES(100,'正式别名','delete-guard-alias');
+    INSERT INTO profile_channels(profile_id,channel_id,include,chno_override) VALUES(1,100,1,100);
+    INSERT INTO streams(source_id,channel_id,fingerprint,url,is_default) VALUES(1,100,'official-guard','https://example.com/guard',1);
+    INSERT INTO pending_channels(id,key,name) VALUES(100,'delete-a','待删甲'),(101,'delete-b','待删乙');
+    INSERT INTO streams(source_id,pending_channel_id,fingerprint,url) VALUES(1,100,'delete-a1','https://example.com/delete-a1'),(1,100,'delete-a2','https://example.com/delete-a2'),(1,101,'delete-b','https://example.com/delete-b');`);
+  const official = await rows('SELECT * FROM channels ORDER BY id');
+  const approved = await rows('SELECT * FROM streams WHERE channel_id IS NOT NULL ORDER BY id');
+  const aliases = await rows('SELECT * FROM channel_aliases ORDER BY id');
+  const pins = await rows('SELECT * FROM profile_channels ORDER BY id');
+  const assertOfficial = async () => {
+    assert.deepEqual(await rows('SELECT * FROM channels ORDER BY id'), official);
+    assert.deepEqual(
+      await rows('SELECT * FROM streams WHERE channel_id IS NOT NULL ORDER BY id'),
+      approved,
+    );
+    assert.deepEqual(await rows('SELECT * FROM channel_aliases ORDER BY id'), aliases);
+    assert.deepEqual(await rows('SELECT * FROM profile_channels ORDER BY id'), pins);
+  };
+  const initial = await rows('SELECT * FROM streams ORDER BY id');
+  const first = initial.find((line: any) => line.fingerprint === 'delete-a1').id;
+  const second = initial.find((line: any) => line.fingerprint === 'delete-a2').id;
+  const other = initial.find((line: any) => line.fingerprint === 'delete-b').id;
+  const guard = initial.find((line: any) => line.fingerprint === 'official-guard').id;
+  for (const ids of [
+    [],
+    ['100', '999999'],
+    ['100.5'],
+    ['-1'],
+    ['0'],
+    ['9007199254740992'],
+    ['oops'],
+  ]) {
+    assert.ok(err(await post('/_admin/review/batch-delete', { pending_ids: ids })));
+    assert.deepEqual(await rows('SELECT * FROM streams ORDER BY id'), initial);
+  }
+  for (const ids of [
+    [],
+    [String(first), String(other)],
+    [String(first), String(guard)],
+    [String(first), '999999'],
+  ]) {
+    assert.ok(err(await post('/_admin/review/100/streams/delete', { stream_ids: ids })));
+    assert.deepEqual(await rows('SELECT * FROM streams ORDER BY id'), initial);
+  }
+  const csrf = await request('/_admin/review/100/delete', {
+    method: 'POST',
+    headers: { origin: 'https://evil.example' },
+  });
+  assert.equal(csrf.status, 403);
+  const unauthorized = await request('/_admin/review/100/delete', {
+    method: 'POST',
+    headers: { cookie: '' },
+  });
+  assert.match(unauthorized.headers.get('location')!, /login/);
+  await db
+    .prepare("INSERT INTO cloud_locks(name,token,expires_at) VALUES('ingest','delete-lock',?)")
+    .bind(Math.floor(Date.now() / 1000) + 120)
+    .run();
+  assert.match(err(await post('/_admin/review/100/delete'))!, /正在更新/);
+  await db.exec("DELETE FROM cloud_locks WHERE token='delete-lock'");
+  assert.deepEqual(await rows('SELECT * FROM streams ORDER BY id'), initial);
+  assert.equal(
+    err(
+      await post('/_admin/review/100/streams/delete', { stream_ids: [String(first)], page: '2' }),
+    ),
+    null,
+  );
+  assert.equal(await scalar(`SELECT count(*) n FROM streams WHERE id=${first}`), 0);
+  assert.equal(await scalar('SELECT count(*) n FROM pending_channels WHERE id=100'), 1);
+  assert.equal(await scalar('SELECT count(*) n FROM streams WHERE pending_channel_id=100'), 1);
+  assert.equal(
+    err(await post('/_admin/review/100/streams/delete', { stream_ids: [String(second)] })),
+    null,
+  );
+  assert.equal(await scalar('SELECT count(*) n FROM pending_channels WHERE id=100'), 0);
+  assert.ok(err(await post('/_admin/review/100/delete')));
+  assert.equal(err(await post('/_admin/review/101/delete')), null);
+  assert.equal(await scalar('SELECT count(*) n FROM streams WHERE pending_channel_id=101'), 0);
+  assert.equal(await scalar('SELECT count(*) n FROM pending_channels WHERE id=101'), 0);
+  await assertOfficial();
+  await db.exec(`INSERT INTO pending_channels(id,key,name) VALUES(200,'batch-a','批删甲'),(201,'batch-b','批删乙'),(202,'batch-empty','空待确认');
+    INSERT INTO streams(source_id,pending_channel_id,fingerprint,url) VALUES(1,200,'batch-a','https://example.com/batch-a'),(1,201,'batch-b','https://example.com/batch-b');`);
+  assert.equal(
+    err(await post('/_admin/review/batch-delete', { pending_ids: ['200', '201', '202', '200'] })),
+    null,
+  );
+  assert.equal(
+    await scalar('SELECT count(*) n FROM pending_channels WHERE id IN (200,201,202)'),
+    0,
+  );
+  assert.equal(
+    await scalar('SELECT count(*) n FROM streams WHERE pending_channel_id IN (200,201,202)'),
+    0,
+  );
+  await assertOfficial();
+  assert.equal((await db.prepare('PRAGMA foreign_key_check').all()).results.length, 0);
+});
+
+test('failed pending deletion rolls back line deletion and version changes', async () => {
+  await db.exec(`INSERT INTO pending_channels(id,key,name) VALUES(300,'rollback-delete','删除回滚');
+    INSERT INTO streams(source_id,pending_channel_id,fingerprint,url) VALUES(1,300,'rollback-delete','https://example.com/rollback-delete');`);
+  await db
+    .prepare(
+      "CREATE TRIGGER review_delete_rollback BEFORE DELETE ON pending_channels WHEN OLD.id=300 BEGIN SELECT RAISE(ABORT,'review delete rollback'); END",
+    )
+    .run();
+  const version = await scalar("SELECT value n FROM app_settings WHERE key='db_version'");
+  assert.ok(err(await post('/_admin/review/batch-delete', { pending_ids: ['300'] })));
+  assert.equal(await scalar('SELECT count(*) n FROM pending_channels WHERE id=300'), 1);
+  assert.equal(await scalar('SELECT count(*) n FROM streams WHERE pending_channel_id=300'), 1);
+  assert.equal(await scalar("SELECT value n FROM app_settings WHERE key='db_version'"), version);
+  await db.exec('DROP TRIGGER review_delete_rollback');
+});

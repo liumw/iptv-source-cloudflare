@@ -315,6 +315,8 @@ body.modal-open { overflow: hidden; }
 .review-merge-box .modal-tools select { flex: 1; min-width: 0; margin: 0; }
 .review-merge-content { padding: 14px 16px; }
 .review-compare { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; margin-top: 12px; }
+#review-merge-modal[data-mode="delete"] .review-compare { grid-template-columns: minmax(0,1fr); }
+#review-target-tools[hidden], #review-existing-panel[hidden] { display: none; }
 .review-line-panel { min-width: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .review-line-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; background: var(--bg-soft); border-bottom: 1px solid var(--border); }
 .review-line-heading h3 { margin: 0; font-size: 14px; overflow-wrap: anywhere; }

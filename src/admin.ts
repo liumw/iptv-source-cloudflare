@@ -26,7 +26,16 @@ import {
 import { configFor, normalizePath, validatePath, renderPlaylist } from './playlist';
 import { ingestSource, normalizeKey, similarity, decodePlaylist } from './ingest';
 import { deleteSource } from './sources';
-import { pendingRows, reviewLines, displayLines, confirmPending, mergePending } from './review';
+import {
+  pendingRows,
+  reviewLines,
+  displayLines,
+  confirmPending,
+  mergePending,
+  reviewSelection,
+  deletePendingChannels,
+  deletePendingLines,
+} from './review';
 import {
   ChannelInputError,
   channelNumber,
@@ -642,6 +651,43 @@ admin.post('/_admin/review/confirm-all', async (c) => {
     ids = (await store.all('SELECT id FROM pending_channels')).map((p) => p.id);
   await confirmPending(store, ids);
   return redirect(c, '/_admin/review', `已将 ${ids.length} 个待确认频道加入正式频道库`);
+});
+admin.post('/_admin/review/batch-delete', async (c) => {
+  const f = await data(c);
+  const result = await deletePendingChannels(
+    c.get('store'),
+    reviewSelection(f.getAll('pending_ids')),
+  );
+  return redirect(
+    c,
+    `/_admin/review?page=${Math.max(1, int(f.get('page'), 1))}`,
+    `已永久删除 ${result.channels} 个待确认频道及 ${result.streams} 条待确认线路`,
+  );
+});
+admin.post('/_admin/review/:id/delete', async (c) => {
+  const f = await data(c);
+  const result = await deletePendingChannels(
+    c.get('store'),
+    reviewSelection([c.req.param('id')], 1),
+  );
+  return redirect(
+    c,
+    `/_admin/review?page=${Math.max(1, int(f.get('page'), 1))}`,
+    `已永久删除 ${result.channels} 个待确认频道及 ${result.streams} 条待确认线路`,
+  );
+});
+admin.post('/_admin/review/:id/streams/delete', async (c) => {
+  const f = await data(c);
+  const result = await deletePendingLines(
+    c.get('store'),
+    reviewSelection([c.req.param('id')], 1)[0],
+    reviewSelection(f.getAll('stream_ids'), 5000),
+  );
+  return redirect(
+    c,
+    `/_admin/review?page=${Math.max(1, int(f.get('page'), 1))}`,
+    `已永久删除 ${result.streams} 条待确认线路，剩余 ${result.remaining} 条${result.remaining ? '' : '；空的待确认频道已清理'}`,
+  );
 });
 admin.post('/_admin/review/:id/confirm', async (c) => {
   await confirmPending(c.get('store'), [int(c.req.param('id'))]);

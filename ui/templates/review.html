@@ -11,9 +11,16 @@
 </div>
 <section class="panel">
   {% if (rows|length) %}
+  <form id="review-batch-form" class="bulk-bar" method="post" action="/_admin/review/batch-delete" data-confirm="永久删除选中的待确认频道及其全部待确认线路？此操作无法恢复，正式频道不受影响。">
+    <input type="hidden" name="page" value="{{ page }}">
+    <span>已选 <strong data-review-count>0</strong> 个待确认频道</span>
+    <button class="btn small danger" type="submit" data-review-batch-action disabled>批量永久删除</button>
+  </form>
+  <p class="muted small">删除仅处理待确认数据。源重新导入时，仍存在的条目可能再次出现。</p>
   <div class="table-scroll"><table>
-    <thead><tr><th>待确认频道</th><th>分组</th><th>待确认线路</th><th>正式库中的相似频道</th><th>操作</th></tr></thead>
+    <thead><tr><th class="batch-check"><input type="checkbox" data-review-check-all aria-label="全选本页待确认频道"></th><th>待确认频道</th><th>分组</th><th>待确认线路</th><th>正式库中的相似频道</th><th>操作</th></tr></thead>
     <tbody>{% for channel, stream_count, suggestions in rows %}<tr>
+      <td class="batch-check"><input class="review-select" type="checkbox" name="pending_ids" value="{{ channel.id }}" form="review-batch-form" aria-label="选择待确认频道 {{ channel.name }}"></td>
       <td><strong>{{ channel.name }}</strong><div class="muted small mono">{{ channel.key }}</div></td>
       <td>{{ channel.group.name if channel.group else '未分组' }}</td><td>{{ stream_count }}</td>
       <td>{% if (suggestions|length) %}<div class="actions">
@@ -22,6 +29,8 @@
       <td><div class="actions">
         <form method="post" action="/_admin/review/{{ channel.id }}/confirm"><button class="btn small primary" type="submit">确认为新频道</button></form>
         <button class="btn small" type="button" data-review-open="{{ channel.id }}">选择线路合并</button>
+        <button class="btn small" type="button" data-review-open="{{ channel.id }}" data-review-mode="delete">管理线路</button>
+        <form method="post" action="/_admin/review/{{ channel.id }}/delete" data-confirm="永久删除「{{ channel.name }}」及其全部待确认线路？此操作无法恢复。"><input type="hidden" name="page" value="{{ page }}"><button class="btn small danger" type="submit">删除频道</button></form>
       </div></td>
     </tr>{% endfor %}</tbody>
   </table></div>
@@ -35,16 +44,17 @@
 <div class="modal" id="review-merge-modal" hidden>
   <div class="modal-backdrop" data-modal-close></div>
   <div class="modal-box review-merge-box">
-    <div class="modal-head"><div><h2>选择要合并的线路</h2><p class="muted small" id="review-merge-subtitle">对照双方线路后，勾选要并入正式频道的线路。</p></div>
+    <div class="modal-head"><div><h2 id="review-modal-title">选择要合并的线路</h2><p class="muted small" id="review-merge-subtitle">对照双方线路后，勾选要并入正式频道的线路。</p></div>
       <button class="btn small" type="button" data-modal-close>关闭</button></div>
     <form method="post" id="review-merge-form">
-      <div class="modal-tools"><label for="review-merge-target">合并到正式频道</label>
+      <input type="hidden" name="page" value="{{ page }}">
+      <div class="modal-tools" id="review-target-tools"><label for="review-merge-target">合并到正式频道</label>
         <select id="review-merge-target" name="target_id" required><option value="">请选择正式频道</option></select></div>
       <div class="modal-list review-merge-content">
         <p class="notice" id="review-merge-notice" role="status">加载中…</p>
         <div class="review-compare">
           <section class="review-line-panel"><div class="review-line-heading"><h3 id="review-incoming-title">待确认线路</h3><button class="btn small" id="review-select-all" type="button">全选可合并线路</button></div><div id="review-incoming-lines"></div></section>
-          <section class="review-line-panel"><div class="review-line-heading"><h3 id="review-existing-title">目标已有线路</h3><span class="muted small">保持现有线路及设置</span></div><div id="review-existing-lines"></div></section>
+          <section class="review-line-panel" id="review-existing-panel"><div class="review-line-heading"><h3 id="review-existing-title">目标已有线路</h3><span class="muted small">保持现有线路及设置</span></div><div id="review-existing-lines"></div></section>
         </div>
       </div>
       <div class="modal-foot"><p class="muted small" id="review-merge-count">未勾选的线路继续留在待确认区。</p>

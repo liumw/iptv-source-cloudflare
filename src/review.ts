@@ -5,6 +5,79 @@ import { withCatalogLock } from './catalog-lock';
 export const lineIdentity = (line: Row) =>
   line.url + '\n' + JSON.stringify(json<Row>(line.attrs_json, {}).vlc_opts ?? []);
 
+export function reviewSelection(values: unknown[], limit = 1000): number[] {
+  if (!values.length || values.length > limit)
+    throw new Error(`请选择要删除的数据，单次最多 ${limit} 项`);
+  const ids = values.map((value) => {
+    const text = String(value ?? '');
+    if (!/^[1-9]\d*$/.test(text) || !Number.isSafeInteger(Number(text)))
+      throw new Error('选择的数据 ID 无效，请刷新后重试');
+    return Number(text);
+  });
+  return [...new Set(ids)];
+}
+
+export async function deletePendingChannels(store: Store, ids: number[]) {
+  ids = reviewSelection(ids);
+  return withCatalogLock(store, async () => {
+    const payload = JSON.stringify(ids);
+    const count = Number(
+      await store.scalar(
+        'SELECT count(*) FROM pending_channels WHERE id IN (SELECT value FROM json_each(?))',
+        [payload],
+      ),
+    );
+    if (count !== ids.length) throw new Error('待确认数据已变化，请刷新后重新选择；未删除任何数据');
+    const streams = Number(
+      await store.scalar(
+        'SELECT count(*) FROM streams WHERE pending_channel_id IN (SELECT value FROM json_each(?)) AND channel_id IS NULL',
+        [payload],
+      ),
+    );
+    await store.write([
+      store.statement(
+        'DELETE FROM streams WHERE pending_channel_id IN (SELECT value FROM json_each(?)) AND channel_id IS NULL',
+        [payload],
+      ),
+      store.statement('DELETE FROM pending_channels WHERE id IN (SELECT value FROM json_each(?))', [
+        payload,
+      ]),
+    ]);
+    return { channels: count, streams };
+  });
+}
+
+export async function deletePendingLines(store: Store, pendingID: number, ids: number[]) {
+  reviewSelection([pendingID], 1);
+  ids = reviewSelection(ids, 5000);
+  return withCatalogLock(store, async () => {
+    if (!(await store.one('SELECT id FROM pending_channels WHERE id=?', [pendingID])))
+      throw new Error('待确认频道已变化，请刷新后重试');
+    const payload = JSON.stringify(ids);
+    const count = Number(
+      await store.scalar(
+        'SELECT count(*) FROM streams WHERE pending_channel_id=? AND channel_id IS NULL AND id IN (SELECT value FROM json_each(?))',
+        [pendingID, payload],
+      ),
+    );
+    if (count !== ids.length) throw new Error('所选线路已变化或不属于此待确认频道；未删除任何线路');
+    const total = Number(
+      await store.scalar('SELECT count(*) FROM streams WHERE pending_channel_id=?', [pendingID]),
+    );
+    await store.write([
+      store.statement(
+        'DELETE FROM streams WHERE pending_channel_id=? AND channel_id IS NULL AND id IN (SELECT value FROM json_each(?))',
+        [pendingID, payload],
+      ),
+      store.statement(
+        'DELETE FROM pending_channels WHERE id=? AND NOT EXISTS(SELECT 1 FROM streams WHERE pending_channel_id=?)',
+        [pendingID, pendingID],
+      ),
+    ]);
+    return { streams: count, remaining: total - count };
+  });
+}
+
 export async function pendingRows(store: Store): Promise<Row[]> {
   return (
     await store.all(`SELECT p.*,g.name group_name,count(s.id) stream_count
