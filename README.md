@@ -1,5 +1,9 @@
 # IPTV Source Cloudflare
 
+[![一键部署到 Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fliumw%2Fiptv-source-cloudflare)
+
+**[一键部署到 Cloudflare](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fliumw%2Fiptv-source-cloudflare)** · [部署与首次管理员初始化](docs/DEPLOY_CLOUDFLARE.md#一键部署到-cloudflare)
+
 基于 **Cloudflare Workers + D1** 的 IPTV 频道管理工具。整理自己的播放列表，再按访问者的运营商、地区和 IPv4/IPv6 条件输出订阅，无需常驻 VPS。
 
 **项目不内置任何直播源、频道、台标库、播放地址或源抓取订阅。** 新部署初始频道库为空；需要自行添加有权使用的播放列表。
@@ -7,6 +11,12 @@
 ![全新部署的空频道库界面](docs/images/empty-dashboard.png)
 
 ## 部署到你自己的 Cloudflare
+
+**快捷方式：** 点击上方按钮，登录自己的 Cloudflare 账号，按向导创建仓库副本、Worker 和 D1，并填写自己的随机 `SESSION_SECRET`。部署脚本自动建表；首次管理员仍需按教程生成并导入，不提供公共默认密码。
+
+**已有 Fork：** 按[一键部署说明](docs/DEPLOY_CLOUDFLARE.md#一键部署到-cloudflare)将部署链接中的仓库地址换成自己的 Fork；若希望直接连接现有 Fork 并复用手动创建的 D1，使用教程的 [Git 自动构建步骤](docs/DEPLOY_CLOUDFLARE.md#6b-可选连接-fork使用-cloudflare-自动构建)。首页按钮默认以本仓库为模板，不会自动识别 Fork 的所有者。
+
+**手动建立 D1：** 原有部署方式继续可用：
 
 1. **Fork** 本仓库；Star / Follow 不会自动部署。
 2. 在自己的 Cloudflare 控制台**手动创建 D1 数据库**。
@@ -59,10 +69,10 @@ pnpm dev
 
 ```sh
 pnpm check          # 构建和 TypeScript 检查
-pnpm test           # 12 组测试，包含从空库初始化与首次登录
+pnpm test           # 包含空库初始化、首次登录及部署流程测试
 pnpm format:check
 pnpm deploy:check   # 只检查部署打包，不上传
-pnpm deploy         # 发布到自己配置的账号和 D1，并上传本机 .dev.vars 为 Secret
+pnpm run deploy         # 本机上传 .dev.vars；Workers Builds 使用平台 Secret 并先应用 D1 迁移
 ```
 
 ## 网络识别与运行范围

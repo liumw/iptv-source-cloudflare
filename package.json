@@ -11,12 +11,22 @@
     "check": "node scripts/build.mjs && tsc --noEmit",
     "test": "node scripts/build.mjs && tsx --test test/*.test.ts",
     "deploy": "node scripts/deploy.mjs",
-    "db:local": "wrangler d1 migrations apply iptv-source-db --local",
-    "db:remote": "wrangler d1 migrations apply iptv-source-db --remote",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "db:remote": "wrangler d1 migrations apply DB --remote",
     "deploy:check": "node scripts/build.mjs && wrangler deploy --dry-run",
     "init:admin": "node scripts/init-admin.mjs",
-    "db:init:local": "wrangler d1 execute iptv-source-db --local --file private/bootstrap.sql",
-    "db:init:remote": "wrangler d1 execute iptv-source-db --remote --file private/bootstrap.sql"
+    "db:init:local": "wrangler d1 execute DB --local --file private/bootstrap.sql",
+    "db:init:remote": "wrangler d1 execute DB --remote --file private/bootstrap.sql"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "保存频道配置、管理员和订阅。自动建表，不内置直播源；部署后按教程导入自己的初始管理员 SQL。"
+      },
+      "SESSION_SECRET": {
+        "description": "必填：至少 32 字符的独立随机会话密钥。可运行 pnpm init:admin 后，填写本机 .dev.vars 中的 SESSION_SECRET 值（不含引号）。不要填写管理员密码。"
+      }
+    }
   },
   "dependencies": {
     "hono": "^4.10.0",

@@ -2,6 +2,40 @@
 
 本文按新账号、新空数据库说明。全部资源建立在**你自己的** Cloudflare 账号下。本仓库不含维护者账号 ID、数据库 ID、管理员凭据或任何直播源。
 
+## 一键部署到 Cloudflare
+
+[![一键部署到 Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fliumw%2Fiptv-source-cloudflare)
+
+这是 Cloudflare 官方部署向导入口：创建自己的仓库副本、Worker、D1，并完成构建发布。首次管理员需另外生成和导入；部署后的频道库为空。希望手动创建 D1 或使用已有数据库时，可直接从下方第 1 步开始。
+
+1. 先按下方第 1 步安装工具并克隆项目，再执行 `pnpm init:admin`，生成自己的管理员 SQL、随机密码和会话密钥。
+2. 点击按钮，登录自己的 Cloudflare，连接 GitHub，确认仓库副本名称、Worker 名称和 D1 名称。若已经 Fork，使用下面的链接，将 `YOUR-GITHUB-USERNAME` 和仓库名换成自己的实际值；官方向导会从指定仓库创建副本，若名称已存在，选择另一个名称。若要直接绑定已有 Fork 而不创建副本，使用第 6B 节。
+
+   ```text
+   https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR-GITHUB-USERNAME/iptv-source-cloudflare
+   ```
+
+   Markdown 按钮的链接是静态地址，Fork 后不会自动改成你的用户名。要让自己 Fork 的首页按钮使用自己的代码，请编辑 README 按钮和文字链接中的 `url` 参数。
+
+3. 在向导的 `SESSION_SECRET` 中填入本机 `.dev.vars` 内生成的密钥值，不含引号，至少 32 字符。它是运行时 Secret，不是管理员密码。不要提交该文件。
+4. 构建命令使用 `pnpm build`，部署命令使用 `pnpm run deploy`；Node.js 使用 24、pnpm 使用 11（需要时在构建变量中设置 `NODE_VERSION=24`、`PNPM_VERSION=11.25.0`）。保留 D1 绑定名称 **DB**。确认后部署。
+5. 向导会创建你自己的 D1 并更新新仓库的 `wrangler.jsonc`。部署脚本在 Workers Builds 中先运行 `wrangler d1 migrations apply DB --remote`，再发布 Worker；只创建空表，不导入账号或源。若这一步失败，后续发布会停止。
+6. 将向导最终创建的仓库克隆到本机（或拉取其最新配置），确认 `wrangler.jsonc` 的真实 D1 ID 与 Worker 的 `DB` 绑定一致。把第 1 步生成的 `private/bootstrap.sql` 私下放到这个仓库副本的 `private/` 下；若使用同一本机目录，保留已有文件即可。不要再次生成一套凭据。
+
+   ```sh
+   pnpm install --frozen-lockfile
+   pnpm exec wrangler login
+   pnpm db:init:remote
+   ```
+
+   确认 Wrangler 登录的是同一个 Cloudflare 账号。也可以在此 D1 的 Console 执行 `private/bootstrap.sql` 的 INSERT 语句。表结构已自动建立，不再手动执行 `0001_schema.sql`。管理员 SQL 只导入一次。
+
+7. 打开自己的 Worker 地址加 `/_admin`，用 `private/bootstrap.credentials.txt` 的账号密码登录，再添加自己的源。若后台返回 503，在 Worker 的 **Settings → Variables and Secrets** 检查 `SESSION_SECRET` 是否为至少 32 字符的运行时 Secret。
+
+后续推送使用 `pnpm run deploy` 的 Workers Builds 会先应用新增的 schema 迁移，保留运行时 Secret 和已有管理员，不重复导入初始化 SQL。本机 `pnpm run deploy` 仍要求有效的 `.dev.vars`；云端通过官方注入的 `WORKERS_CI=1` 识别构建环境。
+
+官方参考：[Deploy to Cloudflare 按钮与资源、密钥配置](https://developers.cloudflare.com/workers/platform/deploy-buttons/)、[Workers Builds 环境变量](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#default-variables)。
+
 ## 1. Fork 项目并安装工具
 
 在 [仓库首页](https://github.com/liumw/iptv-source-cloudflare) 点击 **Fork → Create fork**。仅 Star / Follow 不会创建应用。
@@ -48,7 +82,7 @@ pnpm install --frozen-lockfile
 
 请修改现有字段，不要用上述片段替换整个配置文件。`binding` 必须为 **DB**，与代码中的 `env.DB` 对应。
 
-若数据库名称不是 `iptv-source-db`，还需同步修改 `package.json` 中 `db:*` 命令里的数据库名称，或在后面的 Wrangler 命令中使用你自己的名称。Worker 的 `name` 可自行命名，但须与 Cloudflare 中的 Worker 名称一致。
+`db:*` 命令通过绑定名 **DB** 选择数据库，因此数据库可自行命名，无需修改命令。Worker 的 `name` 可自行命名，但须与 Cloudflare 中的 Worker 名称一致。
 
 数据库 ID 是资源标识，可保存到自己的 Fork；密码、会话密钥和初始化 SQL 只能私下保存。
 
@@ -66,7 +100,7 @@ pnpm init:admin
 | --- | --- |
 | `private/bootstrap.credentials.txt` | 用文本编辑器打开，查看你的初始用户名和密码 |
 | `private/bootstrap.sql` | 导入你自己的新空 D1；其中只保存密码哈希，不保存明文密码 |
-| `.dev.vars` | 独立会话密钥；`pnpm deploy` 将它作为 Cloudflare Secret 上传 |
+| `.dev.vars` | 独立会话密钥；`pnpm run deploy` 将它作为 Cloudflare Secret 上传 |
 
 如需自定义用户名：
 
@@ -129,10 +163,10 @@ SELECT count(*) AS streams FROM streams;
 pnpm check
 pnpm test
 pnpm deploy:check
-pnpm deploy
+pnpm run deploy
 ```
 
-`pnpm deploy` 会检查真实 D1 ID 和至少 32 字符的会话密钥，再发布代码，并通过 `--secrets-file .dev.vars` 将密钥上传为 Worker Secret `SESSION_SECRET`。不需要把 `.dev.vars` 提交到 GitHub。官方参考：[随代码上传 Secret](https://developers.cloudflare.com/workers/configuration/secrets/#upload-secrets-alongside-code)。
+`pnpm run deploy` 会检查真实 D1 ID 和至少 32 字符的会话密钥，再发布代码，并通过 `--secrets-file .dev.vars` 将密钥上传为 Worker Secret `SESSION_SECRET`。不需要把 `.dev.vars` 提交到 GitHub。官方参考：[随代码上传 Secret](https://developers.cloudflare.com/workers/configuration/secrets/#upload-secrets-alongside-code)。
 
 Wrangler 会输出属于你的访问地址，例如：
 
@@ -146,7 +180,7 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev
 
 1. 在 Cloudflare 的 **Workers & Pages → Create application** 中选择导入 Git 仓库的入口，连接 GitHub 并选择自己的 Fork。
 2. 使用与 `wrangler.jsonc` 中 `name` 相同的 Worker 名称，生产分支选 `main`。
-3. 根目录使用仓库根目录 `/`。构建命令填写 `pnpm build`，部署命令填写 `pnpm exec wrangler deploy`。
+3. 根目录使用仓库根目录 `/`。构建命令填写 `pnpm build`，部署命令填写 `pnpm run deploy`，自动先应用 D1 迁移再发布。
 4. 在构建配置中设置 `NODE_VERSION=24`、`PNPM_VERSION=11.25.0`；依赖安装使用 `pnpm install --frozen-lockfile`（若界面可指定安装命令）。
 5. 部署完成后，进入 Worker 的 **Settings → Variables and Secrets → Add**，选择 **Secret**，名称填 `SESSION_SECRET`，值填本机 `.dev.vars` 中生成的密钥值，**不包括引号**；点击 **Deploy**。
 6. 在 Worker 的 Bindings 确认存在名为 `DB` 的 D1 绑定，指向自己创建的数据库。代码中的 Wrangler 配置应已经建立该绑定；若手动补充，也使用这个名称。
@@ -155,7 +189,7 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev
 
 `SESSION_SECRET` 必须存在于 Worker 的**运行时** Variables and Secrets；仅在 Build 变量里填写同名字段不会自动成为运行时密钥。密钥添加前，后台会返回 503，这是配置尚未完成的提示。
 
-Cloudflare Git 构建使用原始 Wrangler 命令，故不要求远端构建环境存在本机 `.dev.vars`。后续代码推送会触发构建，现有运行时 Secret 会保留。若需要升级数据库，仍先手动应用新的 migrations；不要在每次构建中重导管理员。
+Cloudflare Git 构建使用平台运行时 Secret，不要求远端构建环境存在本机 `.dev.vars`。后续代码推送会先应用新增 migrations，再发布，现有运行时 Secret 会保留。不要在每次构建中重导管理员。
 
 官方参考：[Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/)、[控制台配置运行时 Secret](https://developers.cloudflare.com/workers/configuration/secrets/#via-the-dashboard)。
 
@@ -193,15 +227,15 @@ pnpm install --frozen-lockfile
 pnpm db:remote
 pnpm check
 pnpm test
-pnpm deploy
+pnpm run deploy
 ```
 
-只应用新增的 schema 迁移，不再执行 `db:init:remote`。如果使用 Cloudflare Git 自动构建，在运行 migrations 后推送代码即可。
+只应用新增的 schema 迁移，不再执行 `db:init:remote`。如果使用 `pnpm run deploy` 的 Cloudflare Git 自动构建，推送代码时会自动应用新增 migrations。
 
 导出云端完整数据库：
 
 ```sh
-pnpm exec wrangler d1 export iptv-source-db --remote --output private/backup-YYYYMMDD.sql
+pnpm exec wrangler d1 export DB --remote --output private/backup-YYYYMMDD.sql
 ```
 
 把日期改成实际日期，备份文件私下保存。完整导出含表结构，恢复时应导入新空数据库；不要先重建同名表，也不要直接覆盖现有线上库。会话密钥也需私下保管；更换它后原登录会话失效，重新登录即可。
