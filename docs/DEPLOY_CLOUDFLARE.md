@@ -246,6 +246,7 @@ pnpm exec wrangler d1 export DB --remote --output private/backup-YYYYMMDD.sql
 
 | 现象 | 检查方法 |
 | --- | --- |
+| 一键部署提示 `Your GitHub authorization has expired` | 这是 Cloudflare 与 GitHub 的账号连接问题，尚未进入项目构建。先按下方说明恢复 App 授权，再重试部署 |
 | `database_id` 占位提示 | 填写自己的 D1 ID，保持 binding 为 `DB` |
 | `no such table` | 确认在正确的账号和远程 D1 执行了 schema；本机库与云端库不同 |
 | 登录失败 | 确认导入了自己的 `private/bootstrap.sql`；用生成文件中的密码；改过密码后使用新密码 |
@@ -255,6 +256,17 @@ pnpm exec wrangler d1 export DB --remote --output private/backup-YYYYMMDD.sql
 | 订阅为空 | 初始不内置任何源；也检查内容规则、网络标签和实际访问条件 |
 | 本地有效、线上无数据 | 确认使用 `--remote` 导入，且绑定正确数据库 |
 | 网页不能播放 | 源站 CORS、HTTP 混合内容、认证或网络范围可能限制播放；可复制地址到外部播放器 |
+
+### Cloudflare 的 GitHub 授权过期
+
+仅重新登录 GitHub 或 Cloudflare 不一定恢复旧连接。若刷新部署页面后仍提示 `Your GitHub authorization has expired`，按 [Cloudflare 官方修复步骤](https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/#reinstall-the-cloudflare-github-app)重新安装 GitHub App：
+
+1. 打开 [GitHub 已安装应用](https://github.com/settings/installations)，找到 **Cloudflare Workers and Pages → Configure**。
+2. 确认影响范围后卸载 App；这会暂停该安装下仓库的新构建，已有 Cloudflare 部署继续运行。若管理多个项目，先安排合适时间。
+3. 回到一键部署页面，选择 **Git 账户 → 新建 GitHub 连接**，重新 **Install & Authorize**；按自己的需要选择仓库访问范围。
+4. 刷新部署页面，重新选定 GitHub 账号，填入自己的项目名、D1 和会话密钥，再部署。
+
+重新安装前不要反复点击部署，也不要因此修改管理员 SQL 或公开会话密钥。
 
 视频代理默认关闭，减少流量与平台额度消耗。可显式启用 `ENABLE_PLAY_PROXY="true"`，但需自行确认源的使用授权及平台限制；代理只对已登录管理员开放，不改变订阅中原始播放地址。UDP、组播和局域网 IPTV 无法由公网 Worker 直接转发。
 
