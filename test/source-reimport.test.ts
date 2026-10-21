@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { hashPassword } from '../src/security.ts';
-import { applyChannelNumberMigration } from './schema.ts';
+import { applyChannelNumberMigration, applyPendingMigration } from './schema.ts';
 
 test('reimporting deleted feeds reuses line IDs and preserves manual channel and line settings', async () => {
   await build({
@@ -40,6 +40,7 @@ test('reimporting deleted feeds reuses line IDs and preserves manual channel and
         .map((s) => db.prepare(s)),
     );
     await applyChannelNumberMigration(db);
+    await applyPendingMigration(db);
     await db
       .prepare('INSERT INTO admin_users(username,password_hash,must_change_password) VALUES(?,?,0)')
       .bind('testadmin', await hashPassword('reimport-test-password'))
@@ -99,6 +100,9 @@ test('reimporting deleted feeds reuses line IDs and preserves manual channel and
     };
     let sourceID = await add(playlist());
     await ingest(sourceID);
+    assert.equal(await scalar('SELECT count(*) n FROM channels'), 0);
+    assert.equal(await scalar('SELECT count(*) n FROM pending_channels'), 2);
+    await post('/_admin/review/confirm-all');
     assert.equal(await scalar('SELECT count(*) n FROM channels'), 2);
     assert.equal(
       await scalar('SELECT count(*) n FROM streams'),

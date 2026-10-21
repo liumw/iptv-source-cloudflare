@@ -6,6 +6,7 @@ const TABLES = new Set([
   'groups',
   'sources',
   'channels',
+  'pending_channels',
   'streams',
   'channel_aliases',
   'profiles',

@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import { applyChannelNumberMigration } from './schema.ts';
+import { applyChannelNumberMigration, applyPendingMigration } from './schema.ts';
 import assert from 'node:assert/strict';
 import { readFile, mkdtemp, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -77,6 +77,7 @@ for (const automatic of [false, true])
         : createBootstrap();
       await db.batch(statements(initial.sql));
       await applyChannelNumberMigration(db);
+      await applyPendingMigration(db);
       for (const table of ['sources', 'channels', 'streams', 'viewers']) {
         assert.equal(await db.prepare(`SELECT count(*) n FROM ${table}`).first('n'), 0, table);
       }

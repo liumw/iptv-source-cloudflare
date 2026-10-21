@@ -26,6 +26,7 @@ import {
 import { configFor, normalizePath, validatePath, renderPlaylist } from './playlist';
 import { ingestSource, normalizeKey, similarity, decodePlaylist } from './ingest';
 import { deleteSource } from './sources';
+import { pendingRows, reviewLines, displayLines, confirmPending, mergePending } from './review';
 import {
   ChannelInputError,
   channelNumber,
@@ -175,8 +176,8 @@ admin.get('/_admin', async (c) => {
   const counts = await store.one(`SELECT
     (SELECT count(*) FROM sources WHERE origin!='manual') sources,
     (SELECT count(*) FROM channels) channels,(SELECT count(*) FROM streams) streams,
-    (SELECT count(*) FROM streams WHERE enabled=1 AND excluded=0) enabled_streams,
-    (SELECT count(*) FROM channels WHERE auto_created=1 AND reviewed=0) review,
+    (SELECT count(*) FROM streams WHERE enabled=1 AND excluded=0 AND channel_id IS NOT NULL) enabled_streams,
+    (SELECT count(*) FROM pending_channels) review,
     (SELECT count(*) FROM subscriptions) subscriptions,
     (SELECT count(*) FROM access_logs WHERE created_at>=datetime('now','+8 hours','start of day','-8 hours')) access_today`);
   return page(c, 'dashboard.html', {
@@ -264,7 +265,7 @@ admin.post('/_admin/sources/:id/fetch', async (c) => {
       ? undefined
       : stats.skipped
         ? '源内容未变化'
-        : `解析 ${stats.parsed}，新增线路 ${stats.streams_new}，更新 ${stats.streams_updated}，新建频道 ${stats.channels_created}`,
+        : `解析 ${stats.parsed}，新增线路 ${stats.streams_new}，更新 ${stats.streams_updated}，新增待确认 ${stats.channels_created}`,
     stats.error ?? undefined,
   );
 });
@@ -295,7 +296,7 @@ admin.get('/_admin/channels', async (c) => {
     where.push('c.group_id=?');
     args.push(int(group));
   }
-  if (review) where.push('c.auto_created=1 AND c.reviewed=0');
+  if (review) return c.redirect('/_admin/review', 302);
   const clause = where.length ? ' WHERE ' + where.join(' AND ') : '',
     total = Number(await store.scalar('SELECT count(*) FROM channels c' + clause, args)),
     pages = Math.max(1, Math.ceil(total / 100)),
@@ -577,49 +578,97 @@ admin.post('/_admin/streams/:id/assign', async (c) => {
     }
   }
   if (!target) throw new Error('目标频道不存在');
-  await store.write([store.update('streams', stream.id, { channel_id: target.id, is_default: 0 })]);
+  await store.write([
+    store.update('streams', stream.id, {
+      channel_id: target.id,
+      pending_channel_id: null,
+      is_default: 0,
+    }),
+  ]);
   return redirect(c, `/_admin/channels/${target.id}`, '线路已移动');
 });
 
 admin.get('/_admin/review', async (c) => {
   const store = c.get('store'),
     channels = await channelRows(store),
-    pending = channels.filter((ch) => ch.auto_created && !ch.reviewed),
+    pending = await pendingRows(store),
+    aliases = await store.all('SELECT channel_id,alias_norm FROM channel_aliases'),
     pages = Math.max(1, Math.ceil(pending.length / 50)),
     pageNo = Math.min(pages, Math.max(1, int(c.req.query('page'), 1)));
-  const counts = new Map(
-    (await store.all('SELECT channel_id,count(*) n FROM streams GROUP BY channel_id')).map((r) => [
-      r.channel_id,
-      r.n,
-    ]),
-  );
   const rows = pending.slice((pageNo - 1) * 50, pageNo * 50).map((ch) => [
     ch,
-    counts.get(ch.id) ?? 0,
+    ch.stream_count,
     channels
-      .filter((other) => other.id !== ch.id)
-      .map((other) => ({ channel: other, score: similarity(ch.key, other.key) }))
+      .map((other) => ({
+        channel: other,
+        score: Math.max(
+          similarity(ch.key, other.key),
+          similarity(ch.key, normalizeKey(other.name)),
+          ...aliases
+            .filter((a) => a.channel_id === other.id)
+            .map((a) => similarity(ch.key, a.alias_norm)),
+        ),
+      }))
       .filter((v) => v.score >= 70)
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => b.score - a.score || a.channel.id - b.channel.id)
       .slice(0, 3),
   ]);
   return page(c, 'review.html', { rows, total: pending.length, pages, page: pageNo });
 });
+admin.get('/_admin/review/:id/merge-options', async (c) => {
+  const store = c.get('store'),
+    id = int(c.req.param('id')),
+    pending = await store.one('SELECT * FROM pending_channels WHERE id=?', [id]);
+  c.header('Cache-Control', 'no-store');
+  if (!pending) return c.json({ error: '待确认频道不存在，请刷新页面' }, 404);
+  const targets = await store.all(
+      'SELECT id,name,chno,logo FROM channels ORDER BY chno IS NULL,chno,name,id',
+    ),
+    targetID = int(c.req.query('target_id')),
+    target = targets.find((t) => t.id === targetID) ?? null;
+  if (targetID && !target) return c.json({ error: '正式目标频道不存在，请重新选择' }, 404);
+  const incoming = await reviewLines(store, 'pending_channel_id', id),
+    existing = target ? await reviewLines(store, 'channel_id', target.id) : [];
+  return c.json({
+    pending: { id: pending.id, name: pending.name },
+    targets,
+    target,
+    incoming: displayLines(incoming, existing),
+    existing: displayLines(existing),
+  });
+});
 admin.post('/_admin/review/confirm-all', async (c) => {
-  const store = c.get('store');
-  await store.write([
-    store.statement('UPDATE channels SET reviewed=1 WHERE auto_created=1 AND reviewed=0'),
-  ]);
-  return redirect(c, '/_admin/review', '所有待确认频道已审核');
+  const store = c.get('store'),
+    ids = (await store.all('SELECT id FROM pending_channels')).map((p) => p.id);
+  await confirmPending(store, ids);
+  return redirect(c, '/_admin/review', `已将 ${ids.length} 个待确认频道加入正式频道库`);
 });
 admin.post('/_admin/review/:id/confirm', async (c) => {
-  const store = c.get('store');
-  await store.write([store.update('channels', int(c.req.param('id')), { reviewed: 1 })]);
-  return redirect(c, '/_admin/review', '频道已确认');
+  await confirmPending(c.get('store'), [int(c.req.param('id'))]);
+  return redirect(c, '/_admin/review', '已加入正式频道库');
 });
-admin.post('/_admin/review/:id/merge', async (c) =>
-  mergeChannel(c, int(c.req.param('id')), int((await data(c)).get('target_id'))),
-);
+admin.post('/_admin/review/:id/merge', async (c) => {
+  const f = await data(c),
+    ids = [
+      ...new Set(
+        f
+          .getAll('stream_ids')
+          .map((v) => int(v))
+          .filter((id) => id > 0),
+      ),
+    ],
+    result = await mergePending(
+      c.get('store'),
+      int(c.req.param('id')),
+      int(f.get('target_id')),
+      ids,
+    );
+  return redirect(
+    c,
+    '/_admin/review',
+    `已合并 ${result.moved} 条线路，剩余 ${result.remaining} 条待确认；正式频道设置保持不变`,
+  );
+});
 
 admin.get('/_admin/profiles', async (c) => {
   const rows = await c

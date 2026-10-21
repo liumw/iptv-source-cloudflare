@@ -2,69 +2,54 @@
 {% block title %}待确认 · IPTV 管理{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>待确认频道 <span class="muted small">共 {{ total }} 个</span></h1>
-  <div class="actions">
-    {% if (rows|length) %}
-    <form method="post" action="/_admin/review/confirm-all" data-confirm="把当前所有待确认频道标记为已审核？">
-      <button class="btn small" type="submit">全部确认为已审核</button>
-    </form>
-    {% endif %}
+  <div><h1>待确认频道 <span class="muted small">共 {{ total }} 个</span></h1>
+    <p class="muted small">新解析的线路先进入待确认区，确认后才加入正式频道库并用于订阅。</p></div>
+  <div class="actions"><a class="btn small" href="/_admin/channels">正式频道库</a>
+    {% if (rows|length) %}<form method="post" action="/_admin/review/confirm-all" data-confirm="将全部待确认频道作为新频道加入正式库？遇到重复标识或台号会停止，请先处理相似频道。">
+      <button class="btn small" type="submit">全部确认为新频道</button></form>{% endif %}
   </div>
 </div>
-<p class="muted small">自动创建的新频道不会影响已有频道，确认或合并即可。</p>
-
 <section class="panel">
   {% if (rows|length) %}
-  <table>
-    <thead><tr><th>频道</th><th>分组</th><th>线路</th><th>疑似相同</th><th>操作</th></tr></thead>
-    <tbody>
-    {% for channel, stream_count, suggestions in rows %}
-      <tr>
-        <td>
-          <a href="/_admin/channels/{{ channel.id }}">{{ channel.name }}</a>
-          <div class="muted small mono">{{ channel.key }}</div>
-        </td>
-        <td>{{ channel.group.name if channel.group else '未分组' }}</td>
-        <td>{{ stream_count }}</td>
-        <td>
-          {% if (suggestions|length) %}
-            {% for item in suggestions %}
-              <form class="inline" method="post" action="/_admin/review/{{ channel.id }}/merge" data-confirm="把「{{ channel.name }}」合并到「{{ item.channel.name }}」？">
-                <input type="hidden" name="target_id" value="{{ item.channel.id }}">
-                <button class="btn small" type="submit">{{ item.channel.name }} ({{ '%.0f'|format(item.score) }})</button>
-              </form>
-            {% endfor %}
-          {% else %}
-            <span class="muted small">无</span>
-          {% endif %}
-        </td>
-        <td class="nowrap">
-          <form class="inline" method="post" action="/_admin/review/{{ channel.id }}/confirm">
-            <button class="btn small primary" type="submit">确认</button>
-          </form>
-          <form class="inline" method="post" action="/_admin/review/{{ channel.id }}/merge" data-confirm="确定合并？">
-            <input name="target_id" placeholder="目标 ID" style="width:80px;display:inline-block">
-            <button class="btn small" type="submit">合并</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-    <p class="empty">没有待确认的频道。</p>
-  {% endif %}
-
-  {% if pages > 1 %}
-  <div class="actions" style="margin-top:14px">
-    {% if page > 1 %}
-      <a class="btn small" href="?page={{ page - 1 }}">上一页</a>
-    {% endif %}
+  <div class="table-scroll"><table>
+    <thead><tr><th>待确认频道</th><th>分组</th><th>待确认线路</th><th>正式库中的相似频道</th><th>操作</th></tr></thead>
+    <tbody>{% for channel, stream_count, suggestions in rows %}<tr>
+      <td><strong>{{ channel.name }}</strong><div class="muted small mono">{{ channel.key }}</div></td>
+      <td>{{ channel.group.name if channel.group else '未分组' }}</td><td>{{ stream_count }}</td>
+      <td>{% if (suggestions|length) %}<div class="actions">
+        {% for item in suggestions %}<button class="btn small" type="button" data-review-open="{{ channel.id }}" data-target-id="{{ item.channel.id }}">{{ item.channel.name }} · 相似度 {{ '%.0f'|format(item.score) }}%</button>{% endfor %}
+        </div>{% else %}<span class="muted small">暂无相似的正式频道</span>{% endif %}</td>
+      <td><div class="actions">
+        <form method="post" action="/_admin/review/{{ channel.id }}/confirm"><button class="btn small primary" type="submit">确认为新频道</button></form>
+        <button class="btn small" type="button" data-review-open="{{ channel.id }}">选择线路合并</button>
+      </div></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="empty">没有待确认的频道。新导入的线路会显示在这里。</p>{% endif %}
+  {% if pages > 1 %}<div class="actions" style="margin-top:14px">
+    {% if page > 1 %}<a class="btn small" href="?page={{ page - 1 }}">上一页</a>{% endif %}
     <span class="muted small">第 {{ page }} / {{ pages }} 页</span>
-    {% if page < pages %}
-      <a class="btn small" href="?page={{ page + 1 }}">下一页</a>
-    {% endif %}
-  </div>
-  {% endif %}
+    {% if page < pages %}<a class="btn small" href="?page={{ page + 1 }}">下一页</a>{% endif %}
+  </div>{% endif %}
 </section>
+<div class="modal" id="review-merge-modal" hidden>
+  <div class="modal-backdrop" data-modal-close></div>
+  <div class="modal-box review-merge-box">
+    <div class="modal-head"><div><h2>选择要合并的线路</h2><p class="muted small" id="review-merge-subtitle">对照双方线路后，勾选要并入正式频道的线路。</p></div>
+      <button class="btn small" type="button" data-modal-close>关闭</button></div>
+    <form method="post" id="review-merge-form">
+      <div class="modal-tools"><label for="review-merge-target">合并到正式频道</label>
+        <select id="review-merge-target" name="target_id" required><option value="">请选择正式频道</option></select></div>
+      <div class="modal-list review-merge-content">
+        <p class="notice" id="review-merge-notice" role="status">加载中…</p>
+        <div class="review-compare">
+          <section class="review-line-panel"><div class="review-line-heading"><h3 id="review-incoming-title">待确认线路</h3><button class="btn small" id="review-select-all" type="button">全选可合并线路</button></div><div id="review-incoming-lines"></div></section>
+          <section class="review-line-panel"><div class="review-line-heading"><h3 id="review-existing-title">目标已有线路</h3><span class="muted small">保持现有线路及设置</span></div><div id="review-existing-lines"></div></section>
+        </div>
+      </div>
+      <div class="modal-foot"><p class="muted small" id="review-merge-count">未勾选的线路继续留在待确认区。</p>
+        <div class="actions"><button class="btn" type="button" data-modal-close>取消</button><button class="btn primary" type="submit" id="review-merge-submit" disabled>合并所选线路</button></div></div>
+    </form>
+  </div>
+</div>
 {% endblock %}

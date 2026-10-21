@@ -38,6 +38,10 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target.id === "review-merge-target") {
+    loadReviewMerge(event.target.closest(".modal"), event.target.value);
+  }
+  if (event.target.matches('#review-incoming-lines input[name="stream_ids"]')) updateReviewMergeCount();
   const select = event.target.closest("[data-autosubmit]");
   if (select) select.form.submit();
   const channelBox = event.target.closest('#channel-list input[name="channel_ids"]');
@@ -75,6 +79,22 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const reviewOpener = event.target.closest("[data-review-open]");
+  if (reviewOpener) {
+    const modal = document.getElementById("review-merge-modal");
+    modal.dataset.reviewUrl = `/_admin/review/${reviewOpener.dataset.reviewOpen}/merge-options`;
+    modal.querySelector("form").action = `/_admin/review/${reviewOpener.dataset.reviewOpen}/merge`;
+    openModal(modal);
+    await loadReviewMerge(modal, reviewOpener.dataset.targetId || "");
+    return;
+  }
+  if (event.target.closest("#review-select-all")) {
+    const boxes = [...document.querySelectorAll('#review-incoming-lines input:not(:disabled)')];
+    const checked = !boxes.length || boxes.every(box => box.checked);
+    boxes.forEach(box => { box.checked = !checked; });
+    updateReviewMergeCount();
+    return;
+  }
   const opener = event.target.closest("[data-modal-open]");
   if (opener) {
     const modal = document.getElementById(opener.getAttribute("data-modal-open"));
@@ -125,6 +145,93 @@ function closeModal(modal) {
   if (!document.querySelector(".modal:not([hidden])")) {
     document.body.classList.remove("modal-open");
   }
+}
+
+let reviewMergeRequest = 0;
+async function loadReviewMerge(modal, targetID) {
+  const requestID = ++reviewMergeRequest;
+  const targetSelect = modal.querySelector("#review-merge-target");
+  const notice = modal.querySelector("#review-merge-notice");
+  const incoming = modal.querySelector("#review-incoming-lines");
+  const existing = modal.querySelector("#review-existing-lines");
+  targetSelect.disabled = true;
+  modal.querySelector("#review-merge-submit").disabled = true;
+  modal.querySelector("#review-select-all").disabled = true;
+  incoming.replaceChildren();
+  existing.replaceChildren();
+  notice.textContent = "加载双方线路中…";
+  try {
+    const url = new URL(modal.dataset.reviewUrl, location.origin);
+    if (targetID) url.searchParams.set("target_id", targetID);
+    const response = await fetch(url, { credentials: "same-origin", cache: "no-store", headers: {Accept: "application/json"} });
+    const data = await response.json();
+    if (requestID !== reviewMergeRequest) return;
+    if (!response.ok || data.error || data.detail) throw new Error(data.error || data.detail || "线路加载失败");
+    targetSelect.replaceChildren(new Option("请选择正式频道", ""));
+    for (const channel of data.targets) targetSelect.add(new Option(`${channel.chno == null ? "未设台号" : "台号 " + channel.chno} · ${channel.name}`, channel.id));
+    targetSelect.value = data.target ? String(data.target.id) : "";
+    targetSelect.disabled = false;
+    modal.querySelector("#review-merge-subtitle").textContent = `待确认：${data.pending.name}。请选择要并入正式频道的线路。`;
+    modal.querySelector("#review-incoming-title").textContent = `待确认线路（${data.incoming.length}）`;
+    modal.querySelector("#review-existing-title").textContent = data.target ? `${data.target.name} · 已有线路（${data.existing.length}）` : "目标已有线路";
+    renderReviewLines(incoming, data.incoming, true, !!data.target);
+    renderReviewLines(existing, data.existing, false, !!data.target);
+    notice.textContent = data.target ? "只移动勾选的线路；未选线路继续待确认。与目标重复的线路不可重复合并。" : data.targets.length ? "先选择正式目标频道，再对照并勾选线路。" : "正式频道库为空，请先将频道确认为新频道。";
+    modal.querySelector("#review-select-all").disabled = !data.target;
+    updateReviewMergeCount();
+  } catch (error) {
+    if (requestID !== reviewMergeRequest) return;
+    notice.textContent = `${error.message}，请关闭后重试。`;
+    modal.querySelector("#review-merge-count").textContent = "加载失败，未更改任何线路。";
+  }
+}
+
+function renderReviewLines(container, lines, selectable, hasTarget) {
+  if (!lines.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = selectable ? "没有待确认线路。" : hasTarget ? "该正式频道暂无线路。" : "选择目标后显示其当前线路。";
+    container.append(empty);
+  }
+  for (const line of lines) {
+    const row = document.createElement(selectable ? "label" : "div");
+    row.className = "review-line";
+    if (selectable) {
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.name = "stream_ids";
+      box.value = line.id;
+      box.disabled = !hasTarget || line.duplicate;
+      box.setAttribute("aria-label", `合并线路 ${line.id}：${line.name || line.source}`);
+      row.append(box);
+    }
+    const content = document.createElement("div");
+    content.className = "review-line-info";
+    const title = document.createElement("strong");
+    title.textContent = `${line.source} · #${line.id}`;
+    const url = document.createElement("code");
+    url.textContent = line.url;
+    const meta = document.createElement("span");
+    meta.className = "muted small";
+    meta.textContent = `${line.network} · ${line.carrier} · ${line.region || "未标记地区"}${line.is_default ? " · 默认线路" : ""}${!line.enabled ? " · 已失效" : ""}${line.excluded ? " · 已排除" : ""}${line.duplicate ? " · 目标已存在" : ""}`;
+    content.append(title, url, meta);
+    if (line.options?.length) {
+      const options = document.createElement("code");
+      options.textContent = line.options.join(" · ");
+      content.append(options);
+    }
+    row.append(content);
+    container.append(row);
+  }
+}
+
+function updateReviewMergeCount() {
+  const modal = document.getElementById("review-merge-modal");
+  if (!modal) return;
+  const chosen = modal.querySelectorAll('input[name="stream_ids"]:checked').length;
+  const total = modal.querySelectorAll('input[name="stream_ids"]').length;
+  modal.querySelector("#review-merge-count").textContent = `已选 ${chosen} / ${total} 条；未选线路继续待确认。`;
+  modal.querySelector("#review-merge-submit").disabled = !chosen || !modal.querySelector("#review-merge-target").value;
 }
 
 async function loadChannelOptions(modal) {
@@ -409,7 +516,7 @@ function playStream(channel, streamIndex) {
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = proxyUrl;
       video.play().catch(() => {});
-      setPlayerMessage(message, playDataElement?.dataset.proxyEnabled === "0" ? "使用浏览器原生 HLS 直连播放。" : "使用浏览器原生 HLS + 云端代理播放。");
+      setPlayerMessage(message, "使用浏览器原生 HLS + 本地代理播放。");
       return;
     }
     setPlayerMessage(

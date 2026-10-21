@@ -4,7 +4,7 @@
 <div class="page-head">
   <h1>频道库 <span class="muted small">共 {{ total }} 个</span></h1>
   <div class="actions">
-    <a class="btn small" href="/_admin/review">待确认 {{ '（有）' if review }}</a>
+    <a class="btn small" href="/_admin/review">待确认</a>
     <a class="btn small" href="/_admin/sources">抓取源</a>
     <a class="btn small primary" href="/_admin/channels/new">手动添加频道</a>
   </div>
@@ -21,20 +21,18 @@
         {% for g in groups %}<option value="{{ g.id }}" {{ 'selected' if group_id|string == g.id|string }}>{{ g.name }}</option>{% endfor %}
       </select>
     </label>
-    <label class="check"><input type="checkbox" name="review" value="1" {{ 'checked' if review }}> 只看待确认</label>
     <button class="btn" type="submit">筛选</button>
-    {% if q or group_id or review %}<a class="btn" href="/_admin/channels">清除</a>{% endif %}
+    {% if q or group_id %}<a class="btn" href="/_admin/channels">清除</a>{% endif %}
   </form>
 </section>
 
 <section class="panel">
   {% if (rows|length) %}
-  <form id="channel-batch-form" class="bulk-bar" method="post" action="/_admin/channels/batch-confirm">
+  <form id="channel-batch-form" class="bulk-bar" method="post" action="/_admin/channels/batch-delete">
     <input type="hidden" name="return_to" value="{{ return_to }}">
     <span>已选 <strong data-bulk-count>0</strong> 个频道</span>
-    <span class="muted small">勾选后可批量确认或删除；台号可直接在列表中修改并保存。</span>
+    <span class="muted small">勾选后可批量删除；台号可直接在列表中修改并保存。</span>
     <div class="bulk-actions">
-      <button class="btn small" type="submit" formaction="/_admin/channels/batch-confirm" data-bulk-action>批量确认</button>
       <button class="btn small danger" type="submit" formaction="/_admin/channels/batch-delete" data-confirm="永久删除选中频道及其全部线路、别名和内容视图关联？此操作无法恢复。" data-bulk-action>批量永久删除</button>
     </div>
   </form>

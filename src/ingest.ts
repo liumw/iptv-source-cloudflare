@@ -316,13 +316,15 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
     stats.parsed = entries.length;
     if (!entries.length) throw new Error('未解析到有效播放条目，保留现有数据');
     if (entries.length > 5000) throw new Error('单个源最多 5000 条线路，请拆分源文件');
-    const [channels, aliases, groups, allStreams, retainedSources] = await Promise.all([
-      store.all('SELECT * FROM channels'),
-      store.all('SELECT * FROM channel_aliases'),
-      store.all('SELECT * FROM groups'),
-      store.all('SELECT * FROM streams'),
-      store.all("SELECT id FROM sources WHERE origin='manual' AND format='retained'"),
-    ]);
+    const [channels, aliases, groups, allStreams, retainedSources, pendingChannels] =
+      await Promise.all([
+        store.all('SELECT * FROM channels'),
+        store.all('SELECT * FROM channel_aliases'),
+        store.all('SELECT * FROM groups'),
+        store.all('SELECT * FROM streams'),
+        store.all("SELECT id FROM sources WHERE origin='manual' AND format='retained'"),
+        store.all('SELECT * FROM pending_channels'),
+      ]);
     const channelMap = new Map(channels.map((c) => [c.key, c])),
       nameMap = new Map(channels.map((c) => [normalizeKey(c.name), c])),
       byID = new Map(channels.map((c) => [c.id, c])),
@@ -344,15 +346,22 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
       candidates.push(stream);
       retainedByIdentity.set(identity, candidates);
     }
-    let nextChannel = Math.max(0, ...channels.map((c) => c.id)) + 1,
+    const pendingMap = new Map(pendingChannels.map((p) => [p.key, p]));
+    const pendingByID = new Map(pendingChannels.map((p) => [p.id, p]));
+    let nextPending =
+        Math.max(
+          Number(
+            await store.scalar("SELECT seq FROM sqlite_sequence WHERE name='pending_channels'"),
+          ) || 0,
+          ...pendingChannels.map((p) => p.id),
+        ) + 1,
       nextGroup = Math.max(0, ...groups.map((g) => g.id)) + 1,
       nextStream = Math.max(0, ...allStreams.map((s) => s.id)) + 1;
     const groupMap = new Map(groups.map((g) => [g.name, g])),
       newGroups: Row[] = [],
-      newChannels: Row[] = [],
+      newPending: Row[] = [],
       newStreams: Row[] = [],
       updatedStreams: Row[] = [],
-      newAliases: Row[] = [],
       reclaimedOwners = new Set<number>(),
       seen = new Set<number>(),
       fingerprints = new Set<string>();
@@ -392,53 +401,32 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
           throw new Error(`线路“${e.name}”对应多条保留记录，请先核对频道关联，未导入任何更改`);
         existing = choices[0];
       }
-      let channel = existing?.channel_id ? byID.get(existing.channel_id) : namedChannel;
-      if (!channel) {
-        let best: Row | undefined,
-          bestScore = 0;
-        for (const candidate of channelMap.values()) {
-          if (
-            Math.abs(candidate.key.length - norm.length) >
-            Math.max(candidate.key.length, norm.length) * 0.1
-          )
-            continue;
-          const score = similarity(norm, candidate.key);
-          if (score > bestScore) {
-            best = candidate;
-            bestScore = score;
-          }
-        }
-        if (best && bestScore >= 92) {
-          channel = best;
-          if (norm && !aliasMap.has(norm) && !channelMap.has(norm) && !nameMap.has(norm)) {
-            newAliases.push({ channel_id: best.id, alias: e.name, alias_norm: norm });
-            aliasMap.set(norm, best.id);
-          }
+      // Only previously approved line identities keep their official association.
+      // Every unseen line, including exact names, must pass through review.
+      const channel = existing?.channel_id ? byID.get(existing.channel_id) : null;
+      let pending = existing?.pending_channel_id
+        ? pendingByID.get(existing.pending_channel_id)
+        : null;
+      if (!channel && !pending) {
+        const key = norm || 'ch-' + (await sha256(e.name)).slice(0, 10);
+        pending = pendingMap.get(key);
+        if (!pending) {
+          pending = {
+            id: nextPending++,
+            key,
+            name: cleanName(e.name),
+            group_id: getGroup(e.group_title),
+            region: inferRegion(e.name, e.group_title ?? ''),
+            adult: Number(isAdult(e.name, e.group_title ?? '')),
+            logo: e.attrs['tvg-logo'] || null,
+            tvg_id: e.attrs['tvg-id'] || null,
+          };
+          pendingMap.set(key, pending);
+          pendingByID.set(pending.id, pending);
+          newPending.push(pending);
+          stats.channels_created++;
         }
       }
-      if (!channel) {
-        let key = norm || 'ch-' + (await sha256(e.name)).slice(0, 10);
-        let suffix = 2;
-        const base = key;
-        while (channelMap.has(key)) key = base + '-' + suffix++;
-        channel = {
-          id: nextChannel++,
-          key,
-          name: cleanName(e.name),
-          group_id: getGroup(e.group_title),
-          region: inferRegion(e.name, e.group_title ?? ''),
-          adult: Number(isAdult(e.name, e.group_title ?? '')),
-          auto_created: 1,
-          reviewed: 0,
-          logo: e.attrs['tvg-logo'] || null,
-          tvg_id: e.attrs['tvg-id'] || null,
-        };
-        channelMap.set(key, channel);
-        nameMap.set(normalizeKey(channel.name), channel);
-        byID.set(channel.id, channel);
-        newChannels.push(channel);
-        stats.channels_created++;
-      } else if (!existing?.channel_id) stats.matched++;
       const attributes = {
         attrs: e.attrs,
         vlc_opts: e.vlc_opts,
@@ -448,7 +436,8 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
       const row: Row = {
         id: existing?.id ?? nextStream++,
         source_id: source.id,
-        channel_id: channel.id,
+        channel_id: channel?.id ?? null,
+        pending_channel_id: pending?.id ?? null,
         fingerprint: existing?.fingerprint ?? (await sha256(identity)).slice(0, 40),
         url: e.url,
         raw_name: e.name,
@@ -497,8 +486,7 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
         statements.push(store.bulkInsert(table, rows.slice(i, i + 200)));
     };
     addBulk('groups', newGroups);
-    addBulk('channels', newChannels);
-    addBulk('channel_aliases', newAliases);
+    addBulk('pending_channels', newPending);
     addBulk('streams', newStreams);
     // One JSON parameter updates many rows without exceeding D1's parameter limit.
     for (let i = 0; i < updatedStreams.length; i += 200) {
