@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { hashPassword } from '../src/security.ts';
+import { applyChannelNumberMigration } from './schema.ts';
 
 let mf: Miniflare;
 let db: any;
@@ -68,6 +69,7 @@ before(async () => {
       .filter((sql) => sql.trim())
       .map((sql) => db.prepare(sql)),
   );
+  await applyChannelNumberMigration(db);
   await db
     .prepare('INSERT INTO admin_users(username,password_hash,must_change_password) VALUES(?,?,0)')
     .bind('testadmin', await hashPassword('channel-test-password'))

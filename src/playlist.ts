@@ -120,7 +120,7 @@ export function renderEntry(
   if (chno != null) attrs['tvg-chno'] = String(chno);
   const payload = json<Row>(stream.attrs_json, {});
   for (const [key, value] of Object.entries(payload.attrs ?? {}))
-    if (!(key in attrs) && value) attrs[key] = String(value);
+    if (key !== 'tvg-chno' && !(key in attrs) && value) attrs[key] = String(value);
   for (const [key, prop] of [
     ['catchup', 'catchup'],
     ['catchup-source', 'catchup_source'],
@@ -243,8 +243,8 @@ export async function renderPlaylist(
       x[0] - y[0] ||
       x[1] - y[1] ||
       (sortOverrides.get(a.channel.id) ?? 999999) - (sortOverrides.get(b.channel.id) ?? 999999) ||
-      (chnoOverrides.get(a.channel.id) ?? a.channel.chno ?? 999999) -
-        (chnoOverrides.get(b.channel.id) ?? b.channel.chno ?? 999999) ||
+      (a.channel.chno ?? chnoOverrides.get(a.channel.id) ?? 999999) -
+        (b.channel.chno ?? chnoOverrides.get(b.channel.id) ?? 999999) ||
       collator.compare(a.channel.name, b.channel.name)
     );
   });
@@ -253,23 +253,25 @@ export async function renderPlaylist(
     step = Math.max(1, int(config.numbering_step, 1));
   if (maxStreams > 0) for (const b of available) b.streams = b.streams.slice(0, maxStreams);
   let current = Math.max(1, int(config.start_chno, 1));
-  if (config.numbering === 'none') for (const b of available) numbers.set(b.channel.id, null);
-  else if (config.numbering === 'auto')
+  // Library numbers are authoritative in every mode, including zero and "none".
+  // Reserve even filtered/empty channels so automatic numbers cannot steal their keys.
+  const reserved = await store.all('SELECT chno FROM channels WHERE chno IS NOT NULL');
+  const used = new Set<number>(reserved.map((c) => c.chno));
+  for (const b of available) if (b.channel.chno != null) numbers.set(b.channel.id, b.channel.chno);
+  if (config.numbering !== 'auto' && config.numbering !== 'none') {
     for (const b of available) {
-      numbers.set(b.channel.id, current);
-      current += step;
-    }
-  else {
-    const used = new Set<number>();
-    for (const b of available) {
-      const n = chnoOverrides.get(b.channel.id) ?? b.channel.chno;
-      if (n && !used.has(n)) {
+      if (numbers.has(b.channel.id)) continue;
+      const n = chnoOverrides.get(b.channel.id);
+      if (n != null && !used.has(n)) {
         numbers.set(b.channel.id, n);
         used.add(n);
       }
     }
-    for (const b of available) {
-      if (numbers.has(b.channel.id)) continue;
+  }
+  for (const b of available) {
+    if (numbers.has(b.channel.id)) continue;
+    if (config.numbering === 'none') numbers.set(b.channel.id, null);
+    else {
       while (used.has(current)) current += step;
       numbers.set(b.channel.id, current);
       used.add(current);

@@ -5,6 +5,27 @@ import { Store } from './store';
 
 export class ChannelInputError extends Error {}
 
+export async function channelNumber(
+  store: Store,
+  input: string,
+  channelID = -1,
+): Promise<number | null> {
+  const value = input.trim();
+  if (!value) return null;
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)))
+    throw new ChannelInputError('台号必须为非负整数，或留空自动编号。');
+  const number = Number(value);
+  const owner = await store.one('SELECT name FROM channels WHERE chno=? AND id!=? LIMIT 1', [
+    number,
+    channelID,
+  ]);
+  if (owner)
+    throw new ChannelInputError(
+      `台号 ${number} 已被「${owner.name}」使用，不同频道不能使用相同台号。`,
+    );
+  return number;
+}
+
 export async function manualSourceStatement(store: Store) {
   const collision = await store.one(
     "SELECT id FROM sources WHERE name='手工线路' AND origin!='manual'",
@@ -30,9 +51,7 @@ export async function createManualChannel(store: Store, form: FormData) {
   if (!Object.hasOwn(constants.REGIONS, region)) throw new ChannelInputError('请选择有效地区。');
   if (!constants.NETWORKS.includes(network) || !constants.CARRIERS.includes(carrier))
     throw new ChannelInputError('请选择有效的网络类型和运营商。');
-  const number = text('chno');
-  if (number && (!/^\d+$/.test(number) || !Number.isSafeInteger(Number(number))))
-    throw new ChannelInputError('台号必须为非负整数，或留空自动编号。');
+  const number = await channelNumber(store, text('chno'));
   const url = text('url');
   if (url && !/^(?:https?|rtsp|rtsps|rtmp|rtmps|udp|rtp):\/\/[^\s]+$/i.test(url))
     throw new ChannelInputError('播放地址无效，请填写完整播放地址，或留空后再添加线路。');
@@ -51,17 +70,7 @@ export async function createManualChannel(store: Store, form: FormData) {
   statements.push(
     store.statement(
       'INSERT INTO channels(key,name,group_id,region,region_manual,chno,tvg_id,logo,notes,adult,auto_created,reviewed,enabled) VALUES(?,?,(SELECT id FROM groups WHERE name=?),?,1,?,?,?,?,?,0,1,1)',
-      [
-        key,
-        name,
-        group,
-        region,
-        number ? Number(number) : null,
-        tvgID || null,
-        logo || null,
-        text('notes') || null,
-        adult,
-      ],
+      [key, name, group, region, number, tvgID || null, logo || null, text('notes') || null, adult],
     ),
   );
   if (url) {

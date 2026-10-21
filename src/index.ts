@@ -202,7 +202,7 @@ app.on(['GET', 'HEAD'], '/*', async (c) => {
   const ttl = Math.max(0, Math.min(86400, int(sub.cache_ttl ?? profile.cache_ttl, 30))),
     signature = JSON.stringify({ ...resolved.viewer, id: null, name: null, label: null });
   const cacheKey = new Request(
-    `https://iptv-cache.invalid/${await sha256(`${sub.id}|${settings.db_version ?? 1}|${signature}`)}`,
+    `https://iptv-cache.invalid/${await sha256(`channel-number-v2|${sub.id}|${settings.db_version ?? 1}|${signature}`)}`,
   );
   const cached = ttl > 0 ? await caches.default.match(cacheKey) : null;
   let text: string, etag: string;
@@ -250,11 +250,13 @@ app.on(['GET', 'HEAD'], '/*', async (c) => {
 });
 app.onError((error, c) => {
   console.error(error);
-  const message = /UNIQUE constraint/.test(error.message)
-    ? '名称、路径或标识已存在，请修改后重试。'
-    : /FOREIGN KEY/.test(error.message)
-      ? '关联数据已变化，请刷新后重试。'
-      : error.message;
+  const message = /CHANNEL_NUMBER_TAKEN/.test(error.message)
+    ? '台号已被其他频道使用，请刷新后换一个台号。'
+    : /UNIQUE constraint/.test(error.message)
+      ? '名称、路径或标识已存在，请修改后重试。'
+      : /FOREIGN KEY/.test(error.message)
+        ? '关联数据已变化，请刷新后重试。'
+        : error.message;
   if (c.req.path.startsWith('/_admin') && c.req.method === 'POST') {
     const referer = c.req.header('referer');
     let target = '/_admin';

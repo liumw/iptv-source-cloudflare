@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { hashPassword } from '../src/security.ts';
+import { applyChannelNumberMigration } from './schema.ts';
 
 test('reimporting deleted feeds reuses line IDs and preserves manual channel and line settings', async () => {
   await build({
@@ -38,6 +39,7 @@ test('reimporting deleted feeds reuses line IDs and preserves manual channel and
         .filter((s) => s.trim())
         .map((s) => db.prepare(s)),
     );
+    await applyChannelNumberMigration(db);
     await db
       .prepare('INSERT INTO admin_users(username,password_hash,must_change_password) VALUES(?,?,0)')
       .bind('testadmin', await hashPassword('reimport-test-password'))

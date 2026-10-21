@@ -142,7 +142,7 @@ pnpm db:init:remote
 ```
 
 - `wrangler login` 打开官方账号授权页，确认登录的是你创建 D1 的同一个账号。
-- `db:remote` 把 `migrations/0001_schema.sql` 中的空表结构应用到自己的 D1。
+- `db:remote` 按顺序应用 `migrations/` 中尚未执行的迁移，包含空表结构和台号防重复约束。
 - `db:init:remote` 把你生成的 `private/bootstrap.sql` 导入该 D1，创建初始管理员。
 
 `--remote` 表示云端；`--local` 表示本机模拟库，两者互相独立。不要遗漏后缀或误把本机初始化当作云端初始化。
@@ -150,7 +150,7 @@ pnpm db:init:remote
 ### 可选：在 D1 Console 手动执行
 
 1. 打开你创建的 D1 数据库，进入 **Console**。
-2. 复制 `migrations/0001_schema.sql` 中的建表 SQL，依次执行完整 SQL 语句；如果界面只接受单条语句，就按分号分隔逐条执行。
+2. 按文件编号依次执行 `migrations/0001_schema.sql` 和 `migrations/0002_channel_numbers.sql`。界面只接受单条语句时，触发器的 `CREATE TRIGGER ... BEGIN ... END;` 必须作为一条完整语句提交；不要按触发器内部的分号拆开。第二个文件可按 `-- statement-break` 分段执行。
 3. 表结构完成后，复制本机生成的 `private/bootstrap.sql` 中的 INSERT 语句，依次执行。
 4. 这份初始化 SQL 仅用于新空数据库。重复执行会报重复约束，不会重置现有管理员。
 
@@ -254,6 +254,8 @@ pnpm run deploy
 ```
 
 只应用新增的 schema 迁移，不再执行 `db:init:remote`。如果使用 `pnpm run deploy` 的 Cloudflare Git 自动构建，推送代码时会自动应用新增 migrations。
+
+台号更新使用 `0002_channel_numbers.sql`：数据库拦截不同频道的新重复台号，包含并发编辑。升级保留原有台号；历史重复记录不会被自动改号，需在频道库自行修正。频道库的手动台号在 `fixed`、`auto`、`none` 三种模式下均优先于视图配置；只有未设置台号的频道参与自动补号，且跳过所有已占用台号。
 
 导出云端完整数据库：
 

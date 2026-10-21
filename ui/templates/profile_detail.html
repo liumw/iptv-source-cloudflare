@@ -64,11 +64,14 @@
 
           <label>编号方式
             <select name="numbering">
-              {% for n in ['fixed', 'auto', 'none'] %}<option value="{{ n }}" {{ 'selected' if config.numbering == n }}>{{ n }}</option>{% endfor %}
+              <option value="fixed" {{ 'selected' if config.numbering == 'fixed' }}>固定优先，缺失补号</option>
+              <option value="auto" {{ 'selected' if config.numbering == 'auto' }}>未设置台号的频道自动编号</option>
+              <option value="none" {{ 'selected' if config.numbering == 'none' }}>仅输出频道库手动台号</option>
             </select>
           </label>
           <label>起始频道号<input name="start_chno" type="number" value="{{ config.start_chno }}"></label>
           <label>编号步长<input name="numbering_step" type="number" value="{{ config.numbering_step }}"></label>
+          <p class="hint span-all">频道库设置的台号始终优先，自动编号和视图设置均不会覆盖；自动编号会跳过已占用台号。</p>
 
           <label class="span-all">分组顺序<input name="group_order" value="{{ config.group_order|join(', ') }}" placeholder="央视, 卫视, 本地"></label>
           <label class="span-all">EPG 地址<input name="epg_url" value="{{ config.epg_url or '' }}" placeholder="可选，写入 x-tvg-url"></label>

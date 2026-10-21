@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { hashPassword, verifyPassword } from '../src/security.ts';
+import { applyChannelNumberMigration } from './schema.ts';
 import { parsePlaylist, normalizeKey, inferNetwork, similarity } from '../src/ingest.ts';
 import { parseWhitelist, checkIP, compatible, viewerFrom, regionFrom } from '../src/network.ts';
 import { rewriteM3U8 } from '../src/proxy.ts';
@@ -79,6 +80,7 @@ INSERT INTO sources(id,name,origin,format,inline_text) VALUES(1,'fixture','inlin
 INSERT INTO channels(id,key,name,group_id,reviewed) VALUES(1,'cctv5','CCTV5',1,1),(2,'cctv8','CCTV8',1,1),(3,'restricted','Restricted',1,1);
 INSERT INTO streams(id,source_id,channel_id,fingerprint,url,network,carrier,region,tvg_logo) VALUES(1,1,1,'a','https://example.com/a.m3u8','ipv4','telecom','CN-GD','https://example.com/logo.png'),(2,1,2,'b','https://example.com/b.m3u8','ipv4','unicom','CN-GD',NULL),(3,1,3,'c','https://example.com/c.m3u8','ipv6','all','national',NULL),(4,1,3,'d','udp://239.0.0.1:1234','iptv','telecom','national',NULL);
 INSERT INTO subscriptions(id,name,profile_id,viewer_id,path) VALUES(1,'固定',1,1,'living'),(2,'自动',1,NULL,'auto');`);
+  await applyChannelNumberMigration(db);
 });
 after(async () => {
   await mf?.dispose();

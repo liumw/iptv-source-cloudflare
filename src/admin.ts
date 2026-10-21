@@ -28,6 +28,7 @@ import { ingestSource, normalizeKey, similarity, decodePlaylist } from './ingest
 import { deleteSource } from './sources';
 import {
   ChannelInputError,
+  channelNumber,
   createManualChannel,
   deleteChannels,
   manualSourceStatement,
@@ -398,13 +399,20 @@ admin.post('/_admin/channels/:id/update', async (c) => {
   if (!(await one(c, 'channels', id))) throw new Error('频道不存在');
   const name = text(f, 'name');
   if (!name) throw new Error('频道名称不能为空');
+  let number: number | null;
+  try {
+    number = await channelNumber(store, text(f, 'chno'), id);
+  } catch (error) {
+    if (!(error instanceof ChannelInputError)) throw error;
+    return redirect(c, `/_admin/channels/${id}`, undefined, error.message);
+  }
   await store.write([
     store.update('channels', id, {
       name,
       group_id: await groupID(store, text(f, 'group_name')),
       region: text(f, 'region', 'national'),
       region_manual: 1,
-      chno: text(f, 'chno') ? int(f.get('chno')) : null,
+      chno: number,
       tvg_id: text(f, 'tvg_id') || null,
       logo: text(f, 'logo') || null,
       notes: text(f, 'notes') || null,
@@ -419,13 +427,23 @@ admin.post('/_admin/channels/:id/update', async (c) => {
 admin.post('/_admin/channels/:id/chno', async (c) => {
   const f = await data(c),
     store = c.get('store');
+  const id = int(c.req.param('id'));
+  const target = safeReturn(text(f, 'return_to'), '/_admin/channels');
+  if (!(await one(c, 'channels', id))) return redirect(c, target, undefined, '频道不存在');
+  let number: number | null;
+  try {
+    number = await channelNumber(store, text(f, 'chno'), id);
+  } catch (error) {
+    if (!(error instanceof ChannelInputError)) throw error;
+    return redirect(c, target, undefined, error.message);
+  }
   await store.write([
-    store.update('channels', int(c.req.param('id')), {
-      chno: text(f, 'chno') ? int(f.get('chno')) : null,
+    store.update('channels', id, {
+      chno: number,
       updated_at: now(),
     }),
   ]);
-  return redirect(c, safeReturn(text(f, 'return_to'), '/_admin/channels'), '台号已保存');
+  return redirect(c, target, '台号已保存');
 });
 admin.post('/_admin/channels/:id/delete', async (c) => {
   const id = c.req.param('id');

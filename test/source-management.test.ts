@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { hashPassword } from '../src/security.ts';
+import { applyChannelNumberMigration } from './schema.ts';
 
 test('deleting feeds retains their streams, subscription output and independent playback settings', async () => {
   await build({
@@ -38,6 +39,7 @@ test('deleting feeds retains their streams, subscription output and independent 
         .filter((s) => s.trim())
         .map((s) => db.prepare(s)),
     );
+    await applyChannelNumberMigration(db);
     await db
       .prepare('INSERT INTO admin_users(username,password_hash,must_change_password) VALUES(?,?,0)')
       .bind('testadmin', await hashPassword('source-retention-password'))
