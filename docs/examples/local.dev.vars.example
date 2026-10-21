@@ -1,0 +1,4 @@
+# Optional local/manual deployment configuration. One-click cloud deployment needs no input.
+# pnpm init:admin generates your private .dev.vars automatically.
+# To configure your own key, copy this file to .dev.vars and fill at least 32 random characters.
+SESSION_SECRET=""

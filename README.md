@@ -12,13 +12,15 @@
 
 ## 部署到你自己的 Cloudflare
 
-**快捷方式：** 点击上方按钮，登录自己的 Cloudflare 账号，按向导创建仓库副本、Worker 和 D1，并填写自己的随机 `SESSION_SECRET`（至少 32 字符，可使用密码管理器生成）。部署会自动建表并创建初始账号，无需安装本机工具、执行命令或手动导入 SQL。
+**快捷方式：** 点击上方按钮，登录自己的 Cloudflare 账号，按向导确认仓库副本、Worker 和 D1 名称即可。部署会自动建表、创建初始账号，并生成独立随机会话密钥，上传为 Cloudflare Secret `SESSION_SECRET`。无需手动填写密钥、安装本机工具、执行命令或导入 SQL。
 
 | 后台入口 | 初始用户名 | 初始密码 |
 | --- | --- | --- |
 | `https://你的 Worker 域名/_admin` | `admin` | `admin123` |
 
 **首次登录必须设置至少 12 位的新密码**，之后才能使用后台和管理 API。后续重新部署保留已有账号、密码、设置及订阅 token；只有没有管理员的数据库才会自动初始化。初始频道库为空。
+
+会话密钥保存在 Cloudflare 的 Secret 存储中；已有密钥会保留，后续部署不会重新生成。临时密钥文件不会提交 GitHub，也不会进入网页静态资源或 D1。若无法查询现有密钥，部署会停止以避免意外覆盖。
 
 **已有 Fork：** 按[一键部署说明](docs/DEPLOY_CLOUDFLARE.md#一键部署到-cloudflare)将部署链接中的仓库地址换成自己的 Fork；若希望直接连接现有 Fork 并复用手动创建的 D1，使用教程的 [Git 自动构建步骤](docs/DEPLOY_CLOUDFLARE.md#6b-可选连接-fork使用-cloudflare-自动构建)。首页按钮默认以本仓库为模板，不会自动识别 Fork 的所有者。
 
@@ -82,7 +84,7 @@ pnpm check          # 构建和 TypeScript 检查
 pnpm test           # 包含空库初始化、首次登录及部署流程测试
 pnpm format:check
 pnpm deploy:check   # 只检查部署打包，不上传
-pnpm run deploy     # 本机上传 .dev.vars；Workers Builds 自动建表、初始化空库，再发布
+pnpm run deploy     # 本机上传 .dev.vars；Workers Builds 自动建表、初始化空库和缺失密钥，再发布
 ```
 
 ## 网络识别与运行范围

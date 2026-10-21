@@ -9,12 +9,11 @@
 这是 Cloudflare 官方部署向导入口：创建自己的仓库副本、Worker、D1，并自动完成建表、管理员初始化和发布。**无需安装本机工具、执行命令或导入 SQL。** 初始频道库为空，不内置任何源。
 
 1. 点击上方按钮，登录自己的 Cloudflare，连接 GitHub，确认仓库副本名称、Worker 名称和 D1 名称。保持 D1 绑定名称为 **DB**。
-2. 在向导的 `SESSION_SECRET` 中填写你自己生成的至少 32 字符随机字符串，不含引号，可使用密码管理器生成。它是运行时 Secret，不是管理员密码；请私下保存。
-3. 构建命令使用 `pnpm build`，部署命令使用 **`pnpm run deploy`**。Node.js 使用 24、pnpm 使用 11（需要时设置构建变量 `NODE_VERSION=24`、`PNPM_VERSION=11.25.0`）。确认后部署。
-4. 向导创建 D1 并更新新仓库配置；构建脚本自动应用 migrations，再初始化空库，成功后发布 Worker。任一步失败都会停止发布。
-5. 部署成功后打开 `https://你的 Worker 域名/_admin`，用户名 **`admin`**、密码 **`admin123`**。
-6. 首次登录进入修改初始密码页面。填写当前密码 `admin123` 和至少 12 位的新密码，保存后使用新密码重新登录。修改前不能进入其他后台页面或调用管理 API。
-7. 进入空频道库后，手动添加频道或导入自己的播放列表。
+2. 无需填写 `SESSION_SECRET`，向导不再显示此输入项。构建命令使用 `pnpm build`，部署命令使用 **`pnpm run deploy`**。Node.js 使用 24、pnpm 使用 11（需要时设置构建变量 `NODE_VERSION=24`、`PNPM_VERSION=11.25.0`）。确认后部署。
+3. 向导创建 D1 并更新新仓库配置；构建脚本自动应用 migrations、初始化空库，再检查 Worker 的 Secret 列表。如果没有 `SESSION_SECRET`，自动生成 48 字节随机密钥，随代码上传为运行时 Secret；已有密钥保持不变。任一步失败都会停止发布。
+4. 部署成功后打开 `https://你的 Worker 域名/_admin`，用户名 **`admin`**、密码 **`admin123`**。
+5. 首次登录进入修改初始密码页面。填写当前密码 `admin123` 和至少 12 位的新密码，保存后使用新密码重新登录。修改前不能进入其他后台页面或调用管理 API。
+6. 进入空频道库后，手动添加频道或导入自己的播放列表。
 
 自动初始化只写入一个管理员、基础设置、一个空内容视图，以及一个带随机 token 的自动识别订阅。每个数据库独立生成密码盐和订阅 token。后续构建仍检查初始化条件，**只要已有任意管理员，全部初始化语句均跳过**，不重置密码、不重新生成订阅、不覆盖设置，也不会恢复用户删除的内容视图或订阅。
 
@@ -28,7 +27,9 @@ https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR-GITHUB-USERNA
 
 官方向导会从指定仓库创建副本，若名称已存在，选择另一个名称。要让 Fork 首页的按钮使用自己的代码，请编辑 README 按钮和文字链接中的 `url` 参数。要直接绑定已有 Fork 而不创建副本，使用下方第 6B 节；同样会自动初始化无管理员的数据库。
 
-`SESSION_SECRET` 始终需要在向导或 Worker 运行时配置。GitHub 和 Cloudflare 登录、App 授权由部署者在官方页面完成。本机 `pnpm run deploy` 仍使用有效的 `.dev.vars`；其手动自定义账号流程见第 1–6A 节。云端通过官方注入的 `WORKERS_CI=1` 识别 Workers Builds 环境。
+`SESSION_SECRET` 自动保存在 Cloudflare Secret 中，不写入 D1、仓库或网页资源。临时文件仅在当前部署中使用，成功或失败后都会清理。查询现有 Secret 失败时会停止发布，不会把权限、网络错误当成没有密钥。已有部署的密钥不会自动更换，现有登录保持有效。
+
+GitHub 和 Cloudflare 登录、App 授权由部署者在官方页面完成。本机 `pnpm run deploy` 仍使用有效的 `.dev.vars`；其手动自定义账号流程见第 1–6A 节。可选配置示例在 `docs/examples/local.dev.vars.example`，不放在仓库根目录，避免官方向导要求手动输入。云端通过官方注入的 `WORKERS_CI=1` 识别 Workers Builds 环境。
 
 官方参考：[Deploy to Cloudflare 按钮与资源、密钥配置](https://developers.cloudflare.com/workers/platform/deploy-buttons/)、[Workers Builds 环境变量](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#default-variables)。
 
@@ -48,7 +49,7 @@ https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR-GITHUB-USERNA
 | 再次 Git 自动部署 | 构建成功；新密码、原订阅 token、既有会话及各表计数保留，未生成重复账号或配置 |
 | 本地回归 | 21 项测试全部通过，覆盖自定义账号保留、失败停止发布、初始化文件清理、频道管理与网络筛选 |
 
-部署者只需在官方页面完成登录、GitHub App 授权和会话密钥填写，然后使用默认账号登录并修改密码。若遇到 GitHub 授权过期，按文末说明重新授权。
+当前版本已增加会话密钥自动生成和 Cloudflare Secret 上传，不再需要手动填写。部署者只需在官方页面完成登录、GitHub App 授权，然后使用默认账号登录并修改密码。若遇到 GitHub 授权过期，按文末说明重新授权。
 
 ## 1. Fork 项目并安装工具
 
@@ -198,12 +199,12 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev
 2. 使用与 `wrangler.jsonc` 中 `name` 相同的 Worker 名称，生产分支选 `main`。
 3. 根目录使用仓库根目录 `/`。构建命令填写 `pnpm build`，部署命令填写 `pnpm run deploy`，自动应用 D1 迁移、初始化无管理员的数据库，然后发布。
 4. 在构建配置中设置 `NODE_VERSION=24`、`PNPM_VERSION=11.25.0`；依赖安装使用 `pnpm install --frozen-lockfile`（若界面可指定安装命令）。
-5. 部署完成后，进入 Worker 的 **Settings → Variables and Secrets → Add**，选择 **Secret**，名称填 `SESSION_SECRET`，值填本机 `.dev.vars` 中生成的密钥值，**不包括引号**；点击 **Deploy**。
+5. 云端部署自动生成缺失的 `SESSION_SECRET`，无需手动添加。已有 Secret 会原样保留；若之前手动初始化账号但未上传本机 `.dev.vars`，云端仍可生成独立会话密钥，不影响账号密码。
 6. 在 Worker 的 Bindings 确认存在名为 `DB` 的 D1 绑定，指向自己创建的数据库。代码中的 Wrangler 配置应已经建立该绑定；若手动补充，也使用这个名称。
 
 这里选择的是 **Workers**，不是只托管静态文件的 Pages。`.generated/public` 由构建自动生成，不需要提交它，也不要把它单独作为整个应用部署。
 
-`SESSION_SECRET` 必须存在于 Worker 的**运行时** Variables and Secrets；仅在 Build 变量里填写同名字段不会自动成为运行时密钥。密钥添加前，后台会返回 503，这是配置尚未完成的提示。
+自动生成的 `SESSION_SECRET` 位于 Worker 的**运行时** Variables and Secrets，类型为 Secret。不要把同名值填写到 Build 变量中。也可以按需手动配置至少 32 字符的自定义运行时 Secret，后续云端部署会检测并保留它。
 
 Cloudflare Git 构建使用平台运行时 Secret，不要求远端构建环境存在本机 `.dev.vars`。后续代码推送会先应用新增 migrations，再发布，现有运行时 Secret 会保留。默认初始化包含空库检查，不会重置已有管理员或其他配置。
 
@@ -256,7 +257,7 @@ pnpm run deploy
 pnpm exec wrangler d1 export DB --remote --output private/backup-YYYYMMDD.sql
 ```
 
-把日期改成实际日期，备份文件私下保存。完整导出含表结构，恢复时应导入新空数据库；不要先重建同名表，也不要直接覆盖现有线上库。会话密钥也需私下保管；更换它后原登录会话失效，重新登录即可。
+把日期改成实际日期，备份文件私下保存。完整导出含表结构，恢复时应导入新空数据库；不要先重建同名表，也不要直接覆盖现有线上库。本机手动生成的 `.dev.vars` 需私下保存。自动生成的密钥由 Cloudflare Secret 保管，不在 D1 导出中；保留原 Worker 时继续保留该 Secret，重建 Worker 时可自动生成新密钥，旧登录会话会失效，账号密码保持不变。
 
 定时任务默认每天 UTC 19:17（北京时间次日 03:17）清理过期会话、登录限流记录和 30 天前访问日志。源更新在后台手动抓取。
 
@@ -269,7 +270,8 @@ pnpm exec wrangler d1 export DB --remote --output private/backup-YYYYMMDD.sql
 | `no such table` | 确认在正确的账号和远程 D1 执行了 schema；本机库与云端库不同 |
 | 登录失败 | 一键部署首次使用 admin / admin123；手动初始化使用生成文件中的密码；改过密码后必须使用新密码，重新部署不会重置 |
 | 初始化重复或 UNIQUE 报错 | 管理员 SQL 只导入一次；不要用重复初始化来改密码 |
-| 后台 503 | 在 Worker 运行时设置至少 32 字符的 `SESSION_SECRET` 并部署 |
+| 后台 503 | 检查部署是否完整成功，以及运行时是否存在自动生成的 `SESSION_SECRET`；已有无效的自定义 Secret 需修正为至少 32 字符 |
+| 无法检查 Cloudflare 会话密钥 | 检查 Workers Builds 令牌的 Worker 权限或网络；此时会停止发布并保留旧密钥，不要反复重置密钥 |
 | 订阅 403 | 从后台复制包含 token 的完整地址，并检查白名单 |
 | 订阅为空 | 初始不内置任何源；也检查内容规则、网络标签和实际访问条件 |
 | 本地有效、线上无数据 | 确认使用 `--remote` 导入，且绑定正确数据库 |
@@ -282,7 +284,7 @@ pnpm exec wrangler d1 export DB --remote --output private/backup-YYYYMMDD.sql
 1. 打开 [GitHub 已安装应用](https://github.com/settings/installations)，找到 **Cloudflare Workers and Pages → Configure**。
 2. 确认影响范围后卸载 App；这会暂停该安装下仓库的新构建，已有 Cloudflare 部署继续运行。若管理多个项目，先安排合适时间。
 3. 回到一键部署页面，选择 **Git 账户 → 新建 GitHub 连接**，重新 **Install & Authorize**；按自己的需要选择仓库访问范围。
-4. 刷新部署页面，重新选定 GitHub 账号，填入自己的项目名、D1 和会话密钥，再部署。
+4. 刷新部署页面，重新选定 GitHub 账号，确认自己的项目名和 D1，再部署；会话密钥自动生成。
 
 重新安装前不要反复点击部署，也不要因此修改管理员 SQL 或公开会话密钥。
 
