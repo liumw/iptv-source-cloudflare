@@ -202,9 +202,10 @@
     </section>
 
     <section class="panel">
-      <div class="panel-head"><h2>停用频道</h2></div>
-      <form method="post" action="/_admin/channels/{{ channel.id }}/delete" data-confirm="停用后该频道不会出现在任何播放列表中，确定？">
-        <button class="btn small danger" type="submit">停用</button>
+      <div class="panel-head"><h2>永久删除频道</h2></div>
+      <p class="muted small">删除频道及其全部线路、别名和内容视图关联，无法恢复。源中仍包含的频道，后续重新抓取可能再次导入。仅需暂停时，可取消频道信息中的“启用”。</p>
+      <form method="post" action="/_admin/channels/{{ channel.id }}/delete" data-confirm="永久删除频道「{{ channel.name }}」及其全部线路、别名和内容视图关联？此操作无法恢复。">
+        <button class="btn small danger" type="submit">永久删除频道</button>
       </form>
     </section>
   </div>

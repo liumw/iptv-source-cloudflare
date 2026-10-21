@@ -83,6 +83,7 @@ export function render(
         dashboard: '概览',
         sources: '源管理',
         channels: '频道库',
+        channel_new: '手动添加频道',
         review: '待确认',
         profiles: '内容视图',
         play: '在线播放',

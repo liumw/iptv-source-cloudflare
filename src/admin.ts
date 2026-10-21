@@ -25,6 +25,12 @@ import {
 } from './network';
 import { configFor, normalizePath, validatePath, renderPlaylist } from './playlist';
 import { ingestSource, normalizeKey, similarity, decodePlaylist } from './ingest';
+import {
+  ChannelInputError,
+  createManualChannel,
+  deleteChannels,
+  manualSourceStatement,
+} from './channels';
 
 type C = Context<{ Bindings: Env; Variables: Variables }>;
 export const admin = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -292,32 +298,55 @@ admin.get('/_admin/channels', async (c) => {
     return_to: new URL(c.req.url).pathname + new URL(c.req.url).search,
   });
 });
+async function newChannelPage(c: C, form: Row = {}, err?: string) {
+  return page(c, 'channel_new.html', {
+    groups: await c.get('store').all('SELECT * FROM groups ORDER BY sort_order,name'),
+    form: { region: 'national', network: 'all', carrier: 'all', ...form },
+    err,
+  });
+}
+admin.get('/_admin/channels/new', (c) => newChannelPage(c));
+admin.post('/_admin/channels/add', async (c) => {
+  const form = await data(c);
+  try {
+    const id = await createManualChannel(c.get('store'), form);
+    return redirect(c, `/_admin/channels/${id}`, '频道已手动添加');
+  } catch (error) {
+    if (!(error instanceof ChannelInputError)) throw error;
+    c.status(400);
+    return newChannelPage(c, Object.fromEntries(form), error.message);
+  }
+});
 admin.post('/_admin/channels/batch-confirm', async (c) => batchChannels(c, false));
 admin.post('/_admin/channels/batch-delete', async (c) => batchChannels(c, true));
-async function batchChannels(c: C, disable: boolean) {
+async function batchChannels(c: C, remove: boolean) {
   const f = await data(c),
     ids = [
       ...new Set(
         f
           .getAll('channel_ids')
-          .map((v) => int(v))
+          .map((v) =>
+            /^[1-9]\d*$/.test(String(v)) && Number.isSafeInteger(Number(v)) ? Number(v) : 0,
+          )
           .filter((n) => n > 0),
       ),
     ];
   if (ids.length > 1000) throw new Error('单次最多操作 1000 个频道');
   if (ids.length) {
     const store = c.get('store');
-    await store.write([
-      store.statement(
-        `UPDATE channels SET ${disable ? 'enabled=0' : 'reviewed=1'},updated_at=CURRENT_TIMESTAMP WHERE id IN (SELECT value FROM json_each(?))`,
-        [JSON.stringify(ids)],
-      ),
-    ]);
+    if (remove) await deleteChannels(store, ids);
+    else
+      await store.write([
+        store.statement(
+          'UPDATE channels SET reviewed=1,updated_at=CURRENT_TIMESTAMP WHERE id IN (SELECT value FROM json_each(?))',
+          [JSON.stringify(ids)],
+        ),
+      ]);
   }
   return redirect(
     c,
     safeReturn(text(f, 'return_to'), '/_admin/channels'),
-    disable ? '频道已停用' : '频道已确认',
+    remove ? '频道及其线路、别名和视图关联已永久删除' : '频道已确认',
   );
 }
 admin.get('/_admin/channels/:id', async (c) => {
@@ -384,11 +413,15 @@ admin.post('/_admin/channels/:id/chno', async (c) => {
   return redirect(c, safeReturn(text(f, 'return_to'), '/_admin/channels'), '台号已保存');
 });
 admin.post('/_admin/channels/:id/delete', async (c) => {
-  const store = c.get('store');
-  await store.write([
-    store.update('channels', int(c.req.param('id')), { enabled: 0, updated_at: now() }),
-  ]);
-  return redirect(c, '/_admin/channels', '频道已停用');
+  const id = c.req.param('id');
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) throw new Error('频道 ID 无效');
+  const form = await data(c);
+  await deleteChannels(c.get('store'), [Number(id)]);
+  return redirect(
+    c,
+    safeReturn(text(form, 'return_to'), '/_admin/channels'),
+    '频道及其线路、别名和视图关联已永久删除',
+  );
 });
 async function mergeChannel(c: C, id: number, targetID: number) {
   const store = c.get('store'),
@@ -422,31 +455,27 @@ admin.post('/_admin/channels/:id/streams/add', async (c) => {
   if (!channel) throw new Error('频道不存在');
   const url = text(f, 'url');
   if (!/^[a-z][a-z\d+.-]*:\/\//i.test(url) || /[\r\n]/.test(url)) throw new Error('播放地址无效');
-  const source = await store.one(
-    "INSERT INTO sources(name,origin,format) VALUES('手工线路','manual','single') ON CONFLICT(name) DO UPDATE SET name=excluded.name RETURNING id",
-  );
-  const statements: D1PreparedStatement[] = [];
+  const statements: D1PreparedStatement[] = [await manualSourceStatement(store)];
   if (checked(f, 'is_default'))
     statements.push(
       store.statement('UPDATE streams SET is_default=0 WHERE channel_id=?', [channel.id]),
     );
   statements.push(
-    store.insert('streams', {
-      source_id: source!.id,
-      channel_id: channel.id,
-      fingerprint: (await sha256(url + Date.now() + Math.random())).slice(0, 40),
-      url,
-      raw_name: text(f, 'name') || channel.name,
-      network: text(f, 'network', 'all'),
-      carrier: text(f, 'carrier', 'all'),
-      region: text(f, 'region') || null,
-      priority: int(f.get('priority')),
-      is_default: checked(f, 'is_default'),
-      adult: checked(f, 'adult'),
-      network_manual: 1,
-      carrier_manual: 1,
-      region_manual: 1,
-    }),
+    store.statement(
+      "INSERT INTO streams(source_id,channel_id,fingerprint,url,raw_name,network,carrier,region,priority,is_default,adult,network_manual,carrier_manual,region_manual) VALUES((SELECT id FROM sources WHERE origin='manual' ORDER BY id LIMIT 1),?,?,?,?,?,?,?,?,?,?,1,1,1)",
+      [
+        channel.id,
+        (await sha256(url + crypto.randomUUID())).slice(0, 40),
+        url,
+        text(f, 'name') || channel.name,
+        text(f, 'network', 'all'),
+        text(f, 'carrier', 'all'),
+        text(f, 'region') || null,
+        int(f.get('priority')),
+        checked(f, 'is_default'),
+        checked(f, 'adult'),
+      ],
+    ),
   );
   await store.write(statements);
   return redirect(c, `/_admin/channels/${channel.id}`, '线路已添加');

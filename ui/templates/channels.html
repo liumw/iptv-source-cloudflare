@@ -5,7 +5,8 @@
   <h1>频道库 <span class="muted small">共 {{ total }} 个</span></h1>
   <div class="actions">
     <a class="btn small" href="/_admin/review">待确认 {{ '（有）' if review }}</a>
-    <a class="btn small primary" href="/_admin/sources">抓取源</a>
+    <a class="btn small" href="/_admin/sources">抓取源</a>
+    <a class="btn small primary" href="/_admin/channels/new">手动添加频道</a>
   </div>
 </div>
 
@@ -34,7 +35,7 @@
     <span class="muted small">勾选后可批量确认或删除；台号可直接在列表中修改并保存。</span>
     <div class="bulk-actions">
       <button class="btn small" type="submit" formaction="/_admin/channels/batch-confirm" data-bulk-action>批量确认</button>
-      <button class="btn small danger" type="submit" formaction="/_admin/channels/batch-delete" data-confirm="删除（停用）选中的频道？停用后不会出现在播放列表，但记录仍保留。" data-bulk-action>批量删除（停用）</button>
+      <button class="btn small danger" type="submit" formaction="/_admin/channels/batch-delete" data-confirm="永久删除选中频道及其全部线路、别名和内容视图关联？此操作无法恢复。" data-bulk-action>批量永久删除</button>
     </div>
   </form>
 
@@ -74,14 +75,20 @@
             <button class="btn small" type="submit">保存</button>
           </form>
         </td>
-        <td><a class="btn small" href="/_admin/channels/{{ channel.id }}">详情</a></td>
+        <td><div class="actions">
+          <a class="btn small" href="/_admin/channels/{{ channel.id }}">详情</a>
+          <form method="post" action="/_admin/channels/{{ channel.id }}/delete" data-confirm="永久删除频道「{{ channel.name }}」及其全部线路、别名和内容视图关联？此操作无法恢复。">
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+            <button class="btn small danger" type="submit">删除</button>
+          </form>
+        </div></td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
   {% else %}
-    <p class="empty">没有符合条件的频道。{% if not total %}先去源管理抓取一个源。{% endif %}</p>
+    <div class="empty"><p>没有符合条件的频道。</p><p>可以手动添加频道和播放地址，也可以从源导入。</p><a class="btn primary" href="/_admin/channels/new">手动添加频道</a></div>
   {% endif %}
 
   {% if pages > 1 %}

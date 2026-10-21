@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}手动添加频道 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>手动添加频道</h1><p class="muted">填写频道信息即可创建，无需先添加直播源。</p></div>
+  <a class="btn small" href="/_admin/channels">返回频道库</a>
+</div>
+<form method="post" action="/_admin/channels/add" class="stack">
+  <section class="panel">
+    <div class="panel-head"><h2>频道信息</h2><span class="muted small">仅频道名称必填</span></div>
+    <div class="form-grid">
+      <label>频道名称<input name="name" value="{{ form.name or '' }}" required maxlength="128" placeholder="输入频道名称" autofocus></label>
+      <label>遥控台号<input name="chno" value="{{ form.chno or '' }}" type="number" min="0" step="1" inputmode="numeric" placeholder="留空自动编号"></label>
+      <label>分组<input name="group_name" value="{{ form.group_name or '' }}" maxlength="128" list="new-channel-groups" placeholder="选择已有分组或输入新分组"><datalist id="new-channel-groups">{% for g in groups %}<option value="{{ g.name }}">{% endfor %}</datalist></label>
+      <label>地区<select name="region">{% for code, label in regions.items() %}<option value="{{ code }}" {{ 'selected' if form.region == code }}>{{ label }}</option>{% endfor %}</select></label>
+      <label>台标 URL<input name="logo" value="{{ form.logo or '' }}" type="url" placeholder="https://…"></label>
+      <label>tvg-id<input name="tvg_id" value="{{ form.tvg_id or '' }}" maxlength="128" placeholder="选填，用于节目单匹配"></label>
+      <label class="span-all">备注<input name="notes" value="{{ form.notes or '' }}" placeholder="选填"></label>
+      <label class="check"><input type="checkbox" name="adult" value="1" {{ 'checked' if form.adult }}> 成人频道</label>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>首条播放线路</h2><span class="badge">选填</span></div>
+    <p class="muted small">可以直接粘贴播放地址；留空则先建频道，再到详情中添加线路。有可用线路后才会进入播放列表。</p>
+    <div class="form-grid">
+      <label class="span-all">播放地址<input name="url" value="{{ form.url or '' }}" placeholder="粘贴完整播放地址"></label>
+      <label>网络类型<select name="network">{% for n in networks %}<option value="{{ n }}" {{ 'selected' if form.network == n }}>{{ network_labels[n] }}</option>{% endfor %}</select></label>
+      <label>运营商<select name="carrier">{% for carrier in carriers %}<option value="{{ carrier }}" {{ 'selected' if form.carrier == carrier }}>{{ carrier_labels[carrier] }}</option>{% endfor %}</select></label>
+    </div>
+    <p class="muted small">首条线路默认启用并设为默认线路，地区跟随上方频道地区。</p>
+  </section>
+  <div class="actions"><button class="btn primary" type="submit">创建频道</button><a class="btn" href="/_admin/channels">取消</a></div>
+</form>
+{% endblock %}
