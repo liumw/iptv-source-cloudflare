@@ -316,22 +316,33 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
     stats.parsed = entries.length;
     if (!entries.length) throw new Error('未解析到有效播放条目，保留现有数据');
     if (entries.length > 5000) throw new Error('单个源最多 5000 条线路，请拆分源文件');
-    const [channels, aliases, groups, allStreams] = await Promise.all([
+    const [channels, aliases, groups, allStreams, retainedSources] = await Promise.all([
       store.all('SELECT * FROM channels'),
       store.all('SELECT * FROM channel_aliases'),
       store.all('SELECT * FROM groups'),
       store.all('SELECT * FROM streams'),
+      store.all("SELECT id FROM sources WHERE origin='manual' AND format='retained'"),
     ]);
     const channelMap = new Map(channels.map((c) => [c.key, c])),
       nameMap = new Map(channels.map((c) => [normalizeKey(c.name), c])),
       byID = new Map(channels.map((c) => [c.id, c])),
       aliasMap = new Map(aliases.map((a) => [a.alias_norm, a.channel_id]));
-    const sourceStreams = allStreams.filter((s) => s.source_id === source.id),
-      byFingerprint = new Map(sourceStreams.map((s) => [s.fingerprint, s]));
+    const sourceStreams = allStreams.filter((s) => s.source_id === source.id);
     const byIdentity = new Map<string, Row>();
+    const retainedIDs = new Set(retainedSources.map((s) => s.id));
+    const retainedByIdentity = new Map<string, Row[]>();
+    const streamIdentity = (stream: Row) =>
+      stream.url + '\n' + JSON.stringify(json<Row>(stream.attrs_json, {}).vlc_opts ?? []);
     for (const stream of sourceStreams) {
-      const payload = json<Row>(stream.attrs_json, {});
-      byIdentity.set(stream.url + '\n' + JSON.stringify(payload.vlc_opts ?? []), stream);
+      byIdentity.set(streamIdentity(stream), stream);
+    }
+    // Only reclaim retained imports. Active feeds and manually added lines remain independent.
+    for (const stream of allStreams) {
+      if (!retainedIDs.has(stream.source_id)) continue;
+      const identity = streamIdentity(stream);
+      const candidates = retainedByIdentity.get(identity) ?? [];
+      candidates.push(stream);
+      retainedByIdentity.set(identity, candidates);
     }
     let nextChannel = Math.max(0, ...channels.map((c) => c.id)) + 1,
       nextGroup = Math.max(0, ...groups.map((g) => g.id)) + 1,
@@ -342,6 +353,7 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
       newStreams: Row[] = [],
       updatedStreams: Row[] = [],
       newAliases: Row[] = [],
+      reclaimedOwners = new Set<number>(),
       seen = new Set<number>(),
       fingerprints = new Set<string>();
     const getGroup = (name: string | null) => {
@@ -366,11 +378,21 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
       const identity = e.url + '\n' + JSON.stringify(e.vlc_opts);
       if (fingerprints.has(identity)) continue;
       fingerprints.add(identity);
-      const existing = byIdentity.get(identity),
-        norm = normalizeKey(e.name);
-      let channel = existing?.channel_id
-        ? byID.get(existing.channel_id)
-        : (channelMap.get(norm) ?? nameMap.get(norm) ?? byID.get(aliasMap.get(norm) ?? -1));
+      const norm = normalizeKey(e.name);
+      const namedChannel =
+        channelMap.get(norm) ?? nameMap.get(norm) ?? byID.get(aliasMap.get(norm) ?? -1);
+      let existing = byIdentity.get(identity);
+      if (!existing) {
+        const candidates = retainedByIdentity.get(identity) ?? [];
+        const matches = candidates.filter(
+          (s) => normalizeKey(s.raw_name ?? '') === norm || s.channel_id === namedChannel?.id,
+        );
+        const choices = matches.length ? matches : candidates;
+        if (choices.length > 1)
+          throw new Error(`线路“${e.name}”对应多条保留记录，请先核对频道关联，未导入任何更改`);
+        existing = choices[0];
+      }
+      let channel = existing?.channel_id ? byID.get(existing.channel_id) : namedChannel;
       if (!channel) {
         let best: Row | undefined,
           bestScore = 0;
@@ -460,6 +482,7 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
       };
       seen.add(row.id);
       if (existing) {
+        if (existing.source_id !== source.id) reclaimedOwners.add(existing.source_id);
         updatedStreams.push(row);
         stats.streams_updated++;
       } else {
@@ -480,9 +503,7 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
     // One JSON parameter updates many rows without exceeding D1's parameter limit.
     for (let i = 0; i < updatedStreams.length; i += 200) {
       const updates = updatedStreams.slice(i, i + 200),
-        keys = Object.keys(updates[0]).filter(
-          (k) => !['id', 'source_id', 'fingerprint'].includes(k),
-        );
+        keys = Object.keys(updates[0]).filter((k) => !['id', 'fingerprint'].includes(k));
       statements.push(
         store.statement(
           `UPDATE streams SET (${keys.join(',')})=(SELECT ${keys.map((k) => `json_extract(value,'$.${k}')`).join(',')} FROM json_each(?) WHERE json_extract(value,'$.id')=streams.id) WHERE id IN (SELECT json_extract(value,'$.id') FROM json_each(?))`,
@@ -497,6 +518,13 @@ export async function ingestSource(store: Store, source: Row, force = false): Pr
         store.statement(
           'UPDATE streams SET enabled=0 WHERE source_id=? AND id IN (SELECT value FROM json_each(?))',
           [source.id, JSON.stringify(missing)],
+        ),
+      );
+    if (reclaimedOwners.size)
+      statements.push(
+        store.statement(
+          "DELETE FROM sources WHERE origin='manual' AND format='retained' AND id IN (SELECT value FROM json_each(?)) AND NOT EXISTS(SELECT 1 FROM streams WHERE source_id=sources.id)",
+          [JSON.stringify([...reclaimedOwners])],
         ),
       );
     statements.push(
