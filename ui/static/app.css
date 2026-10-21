@@ -234,7 +234,9 @@ details[open] summary { margin-bottom: 14px; color: var(--accent); }
   display: flex;
   flex-direction: column;
   width: min(760px, 100%);
-  max-height: min(84vh, 760px);
+  height: min(84vh, 760px);
+  height: min(84dvh, 760px);
+  max-height: 100%;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -243,6 +245,7 @@ details[open] summary { margin-bottom: 14px; color: var(--accent); }
 }
 .modal-head, .modal-foot {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
@@ -252,13 +255,27 @@ details[open] summary { margin-bottom: 14px; color: var(--accent); }
 .modal-foot { border-top: 1px solid var(--border); flex-wrap: wrap; }
 .modal-tools {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
 }
-.modal-tools input { flex: 1; margin: 0; }
-.modal-list { flex: 1; overflow: auto; padding: 6px 10px; min-height: 160px; }
+.modal-tools input { flex: 1; min-width: 0; margin: 0; }
+.modal-box > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.modal-list {
+  flex: 1 1 160px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 6px 10px;
+}
 .channel-option {
   display: flex;
   align-items: center;
