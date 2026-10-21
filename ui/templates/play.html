@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}在线播放 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head play-page-head">
+  <div>
+    <h1>在线播放</h1>
+    <div class="page-description">选一个频道，把时间留给喜欢的节目。</div>
+  </div>
+  <div class="actions">
+    {% if selected_profile %}
+      <a class="btn small" href="/_admin/profiles/{{ selected_profile.slug }}">编辑当前内容视图</a>
+    {% endif %}
+    <a class="btn small" href="/_admin/subscriptions">订阅链接</a>
+  </div>
+</div>
+
+{% if not play_proxy_enabled %}<p class="notice" style="margin-bottom:16px">云端当前直连直播源。若源站限制浏览器跨域，可复制线路到电视盒子或外部播放器；视频代理需单独开启。</p>{% endif %}<div class="play-screen">
+  <section class="play-stage">
+    <div class="play-now">
+      <span class="channel-logo play-current-logo" id="play-current-logo" aria-hidden="true" hidden>
+        <span class="logo-fallback">{{ icon('tv', 23) }}</span>
+        <img id="play-current-logo-image" data-channel-logo alt="" decoding="async" referrerpolicy="no-referrer" hidden>
+      </span>
+      <div class="play-now-text">
+        <h2 id="play-title">未选择频道</h2>
+        <div class="muted small" id="play-subtitle">从右侧频道列表选择频道开始播放</div>
+      </div>
+      <span class="play-channel-no play-current-number" id="play-badge" hidden><span class="channel-number-label">台号</span><span class="channel-number-value">—</span></span>
+    </div>
+
+    <div class="play-video-wrap">
+      <video id="play-video" controls playsinline preload="none"></video>
+      <div class="play-idle" id="play-idle">
+        <div class="play-idle-icon">▶</div>
+        <div class="play-idle-title">
+          {% if selected_profile %}选择右侧频道开始播放{% else %}还没有启用的内容视图{% endif %}
+        </div>
+        <div class="muted small">云端默认直连源站；也可复制线路地址用外部播放器打开。</div>
+      </div>
+    </div>
+
+    <div class="play-controls">
+      <select id="play-stream" aria-label="选择线路" disabled></select>
+      <button type="button" class="btn small" id="play-copy" data-copy="" disabled>复制线路地址</button>
+      <a class="btn small" id="play-external" href="#" target="_blank" rel="noopener" hidden>新窗口打开</a>
+    </div>
+    <p class="muted small play-player-note" id="play-message">选择频道后显示播放状态。</p>
+  </section>
+
+  <aside class="play-sidebar">
+    {% if selected_profile %}
+      <form class="play-switch" method="get" action="/_admin/play">
+        <label>内容视图
+          <select name="profile" data-autosubmit>
+            {% for item in profiles %}
+              <option value="{{ item.slug }}" {{ 'selected' if item.id == selected_profile.id }}>{{ item.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>网络环境
+          <select name="viewer_id" data-autosubmit>
+            {% for item in viewers %}
+              <option value="{{ item.id }}" {{ 'selected' if selected_viewer == item.id }}>{{ item.name }}{% if item.is_default %}（默认）{% endif %}</option>
+            {% endfor %}
+            {% if not (viewers|length) %}
+              <option value="">自动识别</option>
+            {% endif %}
+          </select>
+        </label>
+        <button class="btn small primary" type="submit">切换</button>
+      </form>
+
+      <div class="play-sidebar-head">
+        <div>
+          <h2>{{ selected_profile.name }}</h2>
+          <div class="muted small">频道列表</div>
+        </div>
+        <span class="badge">{{ play_channels|length }} 个</span>
+      </div>
+      {% if stats %}
+        <div class="play-stats muted small">
+          当前环境：{{ viewer_env.label }} · 输出 {{ stats.channels_emitted }} / {{ stats.channels_total }} 个频道，
+          {{ stats.streams_emitted }} / {{ stats.streams_total }} 条线路。
+        </div>
+      {% endif %}
+
+      <div class="play-channel-search"><input type="search" id="play-search" placeholder="搜索频道、分组或台号…" aria-label="搜索可播放频道"></div>
+      <div class="play-channel-list" id="play-channel-list">
+        {% if (play_channels|length) %}
+          {% for channel in play_channels %}
+            <button class="play-channel" type="button" data-channel-index="{{ loop.index0 }}" data-search="{{ channel.name }} {{ channel.group }} {{ channel.chno }}">
+              <span class="channel-logo" aria-hidden="true">
+                <span class="logo-fallback">{{ icon('tv', 23) }}</span>
+                {% if channel.logo %}<img src="{{ channel.logo }}" data-channel-logo alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">{% endif %}
+              </span>
+              <span class="play-channel-text">
+                <span class="play-name">{{ channel.name }}</span>
+                <span class="play-meta">{{ channel.group }} · {{ channel.streams|length }} 条线路</span>
+              </span>
+              <span class="play-channel-no"><span class="channel-number-label">台号</span><span class="channel-number-value">{{ channel.chno if channel.chno != null else "—" }}</span></span>
+            </button>
+          {% endfor %}
+          <p class="empty" id="play-search-empty" hidden>没有找到匹配的频道。</p>
+        {% else %}
+          <p class="empty">当前内容视图没有可用频道。请检查内容视图规则、指定频道或网络环境。</p>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="play-sidebar-head">
+        <h2>频道列表</h2>
+      </div>
+      <p class="empty">还没有启用的内容视图。请先到「内容视图」创建一个。</p>
+    {% endif %}
+  </aside>
+</div>
+
+<script id="play-data" data-proxy-enabled="{{ '1' if play_proxy_enabled else '0' }}" type="application/json">{{ play_channels|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/hls.min.js"></script>{% endblock %}

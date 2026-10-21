@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.name }} · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ profile.name }}</h1>
+    <div class="muted small mono">slug: {{ profile.slug }}</div>
+  </div>
+  <div class="actions">
+    <a class="btn small" href="/_admin/profiles">返回</a>
+    <a class="btn small" href="/_admin/subscriptions">创建订阅链接</a>
+  </div>
+</div>
+
+<div class="split">
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>指定频道 <span class="badge accent">最高优先级</span></h2>
+        <button class="btn small primary" type="button" data-modal-open="channel-modal">选择频道</button>
+      </div>
+      <p class="muted small" style="margin-top:0">
+        设置后只输出选中的频道，下面的分组、关键词、区域等规则不再参与；清空后恢复分组规则。
+        只列出已确认的频道，未确认的频道请先到「待确认」处理。
+      </p>
+      {% if (pinned_channels|length) %}
+        <div class="chip-list">
+          {% for channel in pinned_channels %}
+            <span class="chip">
+              <span>{{ channel.name }}</span>
+              <form class="inline" method="post" action="/_admin/profiles/{{ profile.slug }}/channels/{{ channel.id }}/remove">
+                <button class="chip-x" type="submit" title="移除">×</button>
+              </form>
+            </span>
+          {% endfor %}
+        </div>
+        <form method="post" action="/_admin/profiles/{{ profile.slug }}/channels/clear" data-confirm="清空指定频道并恢复分组规则？" style="margin-top:12px">
+          <button class="btn small danger" type="submit">清空指定频道</button>
+        </form>
+      {% else %}
+        <p class="muted small" style="margin-bottom:0">当前没有指定频道，使用分组/关键词规则过滤。</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>规则</h2></div>
+      <form method="post" action="/_admin/profiles/{{ profile.slug }}/update">
+        <div class="form-grid">
+          <label>名称<input name="name" value="{{ profile.name }}" required></label>
+          <label>缓存秒数<input name="cache_ttl" type="number" value="{{ profile.cache_ttl }}"></label>
+
+          <label>包含分组（逗号分隔）<input name="include_groups" value="{{ config.include_groups|join(', ') }}"></label>
+          <label>排除分组<input name="exclude_groups" value="{{ config.exclude_groups|join(', ') }}"></label>
+          <label>包含关键词<input name="include_keywords" value="{{ config.include_keywords|join(', ') }}"></label>
+          <label>排除关键词<input name="exclude_keywords" value="{{ config.exclude_keywords|join(', ') }}"></label>
+
+          <label>只要这些网络（逗号分隔，空=不限）<input name="networks" value="{{ config.networks|join(',') }}" placeholder="ipv4, ipv6, iptv"></label>
+          <label>只要这些运营商<input name="carriers" value="{{ config.carriers|join(',') }}" placeholder="telecom, unicom"></label>
+          <label>只要这些区域<input name="regions" value="{{ config.regions|join(',') }}" placeholder="national, CN-GD"></label>
+
+          <label>每台最多线路<input name="max_streams_per_channel" type="number" value="{{ config.max_streams_per_channel }}"></label>
+          <label>最多频道数<input name="max_channels" type="number" value="{{ config.max_channels if config.max_channels != null else '' }}"></label>
+          <label>最低健康分<input name="min_score" type="number" step="0.1" value="{{ config.min_score }}"></label>
+
+          <label>编号方式
+            <select name="numbering">
+              {% for n in ['fixed', 'auto', 'none'] %}<option value="{{ n }}" {{ 'selected' if config.numbering == n }}>{{ n }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>起始频道号<input name="start_chno" type="number" value="{{ config.start_chno }}"></label>
+          <label>编号步长<input name="numbering_step" type="number" value="{{ config.numbering_step }}"></label>
+
+          <label class="span-all">分组顺序<input name="group_order" value="{{ config.group_order|join(', ') }}" placeholder="央视, 卫视, 本地"></label>
+          <label class="span-all">EPG 地址<input name="epg_url" value="{{ config.epg_url or '' }}" placeholder="可选，写入 x-tvg-url"></label>
+          <label>换行符
+            <select name="line_ending">
+              <option value="lf" {{ 'selected' if config.line_ending == 'lf' }}>LF（默认）</option>
+              <option value="crlf" {{ 'selected' if config.line_ending == 'crlf' }}>CRLF</option>
+            </select>
+          </label>
+
+          <label class="check"><input type="checkbox" name="allow_adult" value="1" {{ 'checked' if config.allow_adult }}> 允许成人频道</label>
+          <label class="check"><input type="checkbox" name="only_adult" value="1" {{ 'checked' if config.only_adult }}> 只要成人频道</label>
+          <label class="check"><input type="checkbox" name="require_logo" value="1" {{ 'checked' if config.require_logo }}> 必须有台标</label>
+          <label class="check"><input type="checkbox" name="flatten_groups" value="1" {{ 'checked' if config.flatten_groups }}> 扁平化分组</label>
+          <label class="check"><input type="checkbox" name="debug_comment" value="1" {{ 'checked' if config.debug_comment }}> 输出环境注释</label>
+        </div>
+        <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">保存规则</button></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>原始配置</h2></div>
+      <details>
+        <summary>查看 JSON</summary>
+        <pre class="code">{{ profile.config_json }}</pre>
+      </details>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head"><h2>命中预览</h2></div>
+      <form method="get" action="/_admin/profiles/{{ profile.slug }}">
+        <input type="hidden" name="preview" value="1">
+        <label>按哪个环境预览
+          <select name="viewer_id" data-autosubmit>
+            {% for v in viewers %}
+              <option value="{{ v.id }}" {{ 'selected' if selected_viewer == v.id }}>{{ v.name }}{% if v.is_default %}（默认）{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="actions" style="margin-top:10px"><button class="btn small primary" type="submit">重新预览</button></div>
+      </form>
+
+      {% if preview_stats %}
+        <div class="cards" style="margin-top:14px;grid-template-columns:repeat(2,1fr)">
+          <div class="card"><span class="num">{{ preview_stats.channels_emitted }}</span><span class="label">输出频道 / {{ preview_stats.channels_total }}</span></div>
+          <div class="card"><span class="num">{{ preview_stats.streams_emitted }}</span><span class="label">输出线路 / {{ preview_stats.streams_total }}</span></div>
+        </div>
+        <p class="muted small">环境：{{ viewer_env.label }}</p>
+        {% if preview_stats.reasons %}
+          <div style="margin-bottom:8px">
+            {% for reason, count in preview_stats.reasons.items() %}<span class="badge">{{ reason }} {{ count }}</span> {% endfor %}
+          </div>
+        {% endif %}
+        {% if (preview_stats.unavailable|length) %}
+          <details>
+            <summary>不可用频道（{{ preview_stats.unavailable_total }}）</summary>
+            <ul class="small muted">
+              {% for item in preview_stats.unavailable %}<li>{{ item.name }} — {{ item.label }}</li>{% endfor %}
+            </ul>
+          </details>
+        {% endif %}
+        <details style="margin-top:10px">
+          <summary>m3u 预览</summary>
+          <pre class="code">{{ preview_head }}</pre>
+        </details>
+      {% else %}
+        <p class="muted small">点击"重新预览"查看当前规则在该环境下的输出。</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<div class="modal" id="channel-modal" hidden data-options-url="/_admin/profiles/{{ profile.slug }}/channel-options">
+  <div class="modal-backdrop" data-modal-close></div>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="channel-modal-title">
+    <div class="modal-head">
+      <div>
+        <h2 id="channel-modal-title">选择指定频道</h2>
+        <p class="muted small" style="margin:0">只列出已确认的频道。保存后只输出勾选的频道。</p>
+      </div>
+      <button type="button" class="btn small" data-modal-close>关闭</button>
+    </div>
+    <div class="modal-tools">
+      <input id="channel-search" type="search" placeholder="搜索频道名 / key / 分组" autocomplete="off">
+      <span class="muted small nowrap" id="channel-count"></span>
+    </div>
+    <form method="post" action="/_admin/profiles/{{ profile.slug }}/channels" id="channel-form">
+      <div class="modal-list" id="channel-list">
+        <p class="muted small">加载中…</p>
+      </div>
+      <div class="modal-foot">
+        <span class="muted small">不勾选任何频道 = 清空指定频道，恢复分组规则。</span>
+        <div class="actions">
+          <button type="button" class="btn" data-modal-close>取消</button>
+          <button type="submit" class="btn primary">保存指定频道</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

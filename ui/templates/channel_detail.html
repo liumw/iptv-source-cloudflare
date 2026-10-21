@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}{{ channel.name }} · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ channel.name }}</h1>
+    <div class="muted small mono">{{ channel.key }}</div>
+  </div>
+  <div class="actions">
+    {% if channel.adult %}<span class="badge bad">成人</span>{% endif %}
+    {% if channel.auto_created and not channel.reviewed %}<span class="badge warn">待确认</span>{% endif %}
+    {% if not channel.enabled %}<span class="badge off">已停用</span>{% endif %}
+    <a class="btn small" href="/_admin/channels">返回列表</a>
+  </div>
+</div>
+
+<div class="split">
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head"><h2>频道信息</h2></div>
+      <form method="post" action="/_admin/channels/{{ channel.id }}/update">
+        <div class="form-grid">
+          <label>名称<input name="name" value="{{ channel.name }}" required></label>
+          <label>分组
+            <input name="group_name" value="{{ channel.group.name if channel.group else '' }}" list="group-list">
+            <datalist id="group-list">{% for g in groups %}<option value="{{ g.name }}">{% endfor %}</datalist>
+          </label>
+          <label>区域
+            <select name="region">
+              {% for code, label in regions.items() %}<option value="{{ code }}" {{ 'selected' if channel.region == code }}>{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>频道号<input name="chno" type="number" value="{{ channel.chno if channel.chno != null else '' }}"></label>
+          <label>tvg-id<input name="tvg_id" value="{{ channel.tvg_id or '' }}"></label>
+          <label>台标 URL<input name="logo" value="{{ channel.logo or '' }}"></label>
+          <label class="span-all">备注<input name="notes" value="{{ channel.notes or '' }}"></label>
+          <label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if channel.enabled }}> 启用</label>
+          <label class="check"><input type="checkbox" name="adult" value="1" {{ 'checked' if channel.adult }}> 成人频道</label>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn primary" type="submit">保存频道</button>
+          <span class="muted small">区域手工修改后不再被自动推断覆盖</span>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>手工新增线路</h2></div>
+      <form method="post" action="/_admin/channels/{{ channel.id }}/streams/add">
+        <div class="form-grid">
+          <label class="span-all">播放地址
+            <input name="url" required placeholder="https://example.com/live.m3u8 或 rtsp://...">
+          </label>
+          <label>显示名<input name="name" placeholder="默认使用频道名"></label>
+          <label>网络
+            <select name="network">
+              {% for n in networks %}<option value="{{ n }}" {{ 'selected' if n == 'all' }}>{{ network_labels[n] }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>运营商
+            <select name="carrier">
+              {% for c in carriers %}<option value="{{ c }}" {{ 'selected' if c == 'all' }}>{{ carrier_labels[c] }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>区域
+            <select name="region">
+              <option value="">跟随频道</option>
+              {% for code, label in regions.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>优先级<input name="priority" type="number" value="0"></label>
+          <label class="check"><input type="checkbox" name="is_default" value="1"> 设为默认线路</label>
+          <label class="check"><input type="checkbox" name="adult" value="1"> 成人线路</label>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn primary" type="submit">添加线路</button>
+          <span class="muted small">手工线路保存在内部“手工线路”源中，不会随抓取被覆盖。</span>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>线路（{{ streams|length }}）</h2></div>
+      {% if streams %}
+      {% for s in streams %}
+      <form id="sf-{{ s.id }}" method="post" action="/_admin/streams/{{ s.id }}/update"></form>
+      <form id="df-{{ s.id }}" method="post" action="/_admin/streams/{{ s.id }}/delete" data-confirm="删除线路「{{ s.raw_name }}」？抓取来的线路下次抓取可能重新出现；只想隐藏请用“忽略”。"></form>
+      {% endfor %}
+      <table>
+        <thead>
+          <tr>
+            <th>默认</th><th>状态</th><th>原始名 / 来源</th><th>网络</th><th>运营商</th>
+            <th>区域</th><th>优先级</th><th>成人</th><th>忽略</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for s in streams %}
+          <tr>
+            <td>
+              {% if s.is_default %}<span class="badge ok">默认</span>
+              {% else %}
+              <form class="inline" method="post" action="/_admin/streams/{{ s.id }}/default">
+                <button class="btn small" type="submit">设默认</button>
+              </form>
+              {% endif %}
+            </td>
+            <td>
+              {% if not s.enabled %}<span class="badge off">源内消失</span>
+              {% elif s.excluded %}<span class="badge bad">已忽略</span>
+              {% else %}<span class="badge ok">启用</span>{% endif %}
+            </td>
+            <td>
+              <div>{{ s.raw_name }}</div>
+              <div class="muted small">{{ s.source.name }}{% if s.source.origin == 'manual' %} <span class="badge">手工</span>{% endif %}</div>
+            </td>
+            <td>
+              <select name="network" form="sf-{{ s.id }}">
+                {% for n in networks %}<option value="{{ n }}" {{ 'selected' if s.network == n }}>{{ network_labels[n] }}</option>{% endfor %}
+              </select>
+            </td>
+            <td>
+              <select name="carrier" form="sf-{{ s.id }}">
+                {% for c in carriers %}<option value="{{ c }}" {{ 'selected' if s.carrier == c }}>{{ carrier_labels[c] }}</option>{% endfor %}
+              </select>
+            </td>
+            <td>
+              <select name="region" form="sf-{{ s.id }}">
+                <option value="">跟随频道</option>
+                {% for code, label in regions.items() %}<option value="{{ code }}" {{ 'selected' if s.region == code }}>{{ label }}</option>{% endfor %}
+              </select>
+            </td>
+            <td><input name="priority" type="number" value="{{ s.priority }}" form="sf-{{ s.id }}" style="width:70px"></td>
+            <td><input type="checkbox" name="adult" value="1" {{ 'checked' if s.adult }} form="sf-{{ s.id }}"></td>
+            <td><input type="checkbox" name="excluded" value="1" {{ 'checked' if s.excluded }} form="sf-{{ s.id }}"></td>
+            <td class="nowrap">
+              <button class="btn small primary" type="submit" form="sf-{{ s.id }}">保存</button>
+              <button class="btn small danger" type="submit" form="df-{{ s.id }}">删除</button>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="10" style="border-bottom:1px solid var(--border)">
+              <div class="mono small muted">{{ s.url }}</div>
+              <div class="muted small">
+                tvg-id: {{ s.tvg_id or '-' }} · tvg-name: {{ s.tvg_name or '-' }}
+                {% if s.catchup %} · catchup: {{ s.catchup }}{% endif %}
+              </div>
+              <form method="post" action="/_admin/streams/{{ s.id }}/assign" class="form-row" style="margin-top:6px">
+                <input name="target_channel_id" placeholder="目标频道 ID" style="max-width:140px">
+                <input name="target_name" placeholder="或目标频道名（不存在会自动创建）" style="max-width:280px">
+                <button class="btn small" type="submit">移动线路</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="empty">这个频道还没有线路。</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head"><h2>环境兼容性</h2></div>
+      {% if (matrix|length) %}
+        {% for viewer, ok_count, total in matrix %}
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+            <div>
+              <div>{{ viewer.name }}</div>
+              <div class="muted small">{{ viewer.carrier }}{% if viewer.supports_ipv4 %} · IPv4{% endif %}{% if viewer.supports_ipv6 %} · IPv6{% endif %}{% if viewer.supports_iptv %} · IPTV{% endif %}</div>
+            </div>
+            <div>
+              {% if total == 0 %}<span class="badge">-</span>
+              {% elif ok_count == 0 %}<span class="badge bad">0 / {{ total }}</span>
+              {% elif ok_count < total %}<span class="badge warn">{{ ok_count }} / {{ total }}</span>
+              {% else %}<span class="badge ok">{{ ok_count }} / {{ total }}</span>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="muted small">还没有环境档案。</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>别名（{{ channel.aliases|length }}）</h2></div>
+      {% if (channel.aliases|length) %}
+        {% for alias in channel.aliases %}<span class="badge">{{ alias.alias_norm }}</span> {% endfor %}
+      {% else %}
+        <p class="muted small">暂无别名。绑定线路或合并频道时会自动积累。</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>合并到其他频道</h2></div>
+      <form method="post" action="/_admin/channels/{{ channel.id }}/merge" data-confirm="合并后当前频道会被删除，线路与别名转移到目标频道，确定？">
+        <label>目标频道 ID<input name="target_id" placeholder="例如 42" required></label>
+        <div class="actions" style="margin-top:10px"><button class="btn small danger" type="submit">合并</button></div>
+      </form>
+      <p class="muted small" style="margin-bottom:0">提示：在待确认页可以选择相似频道，不必手输 ID。</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>停用频道</h2></div>
+      <form method="post" action="/_admin/channels/{{ channel.id }}/delete" data-confirm="停用后该频道不会出现在任何播放列表中，确定？">
+        <button class="btn small danger" type="submit">停用</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}待确认 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>待确认频道 <span class="muted small">共 {{ total }} 个</span></h1>
+  <div class="actions">
+    {% if (rows|length) %}
+    <form method="post" action="/_admin/review/confirm-all" data-confirm="把当前所有待确认频道标记为已审核？">
+      <button class="btn small" type="submit">全部确认为已审核</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+<p class="muted small">自动创建的新频道不会影响已有频道，确认或合并即可。</p>
+
+<section class="panel">
+  {% if (rows|length) %}
+  <table>
+    <thead><tr><th>频道</th><th>分组</th><th>线路</th><th>疑似相同</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for channel, stream_count, suggestions in rows %}
+      <tr>
+        <td>
+          <a href="/_admin/channels/{{ channel.id }}">{{ channel.name }}</a>
+          <div class="muted small mono">{{ channel.key }}</div>
+        </td>
+        <td>{{ channel.group.name if channel.group else '未分组' }}</td>
+        <td>{{ stream_count }}</td>
+        <td>
+          {% if (suggestions|length) %}
+            {% for item in suggestions %}
+              <form class="inline" method="post" action="/_admin/review/{{ channel.id }}/merge" data-confirm="把「{{ channel.name }}」合并到「{{ item.channel.name }}」？">
+                <input type="hidden" name="target_id" value="{{ item.channel.id }}">
+                <button class="btn small" type="submit">{{ item.channel.name }} ({{ '%.0f'|format(item.score) }})</button>
+              </form>
+            {% endfor %}
+          {% else %}
+            <span class="muted small">无</span>
+          {% endif %}
+        </td>
+        <td class="nowrap">
+          <form class="inline" method="post" action="/_admin/review/{{ channel.id }}/confirm">
+            <button class="btn small primary" type="submit">确认</button>
+          </form>
+          <form class="inline" method="post" action="/_admin/review/{{ channel.id }}/merge" data-confirm="确定合并？">
+            <input name="target_id" placeholder="目标 ID" style="width:80px;display:inline-block">
+            <button class="btn small" type="submit">合并</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">没有待确认的频道。</p>
+  {% endif %}
+
+  {% if pages > 1 %}
+  <div class="actions" style="margin-top:14px">
+    {% if page > 1 %}
+      <a class="btn small" href="?page={{ page - 1 }}">上一页</a>
+    {% endif %}
+    <span class="muted small">第 {{ page }} / {{ pages }} 页</span>
+    {% if page < pages %}
+      <a class="btn small" href="?page={{ page + 1 }}">下一页</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

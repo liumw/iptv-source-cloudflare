@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}内容视图 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>内容视图</h1>
+  <span class="muted small">决定"看什么"，网络环境由订阅链接负责</span>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><h2>新建</h2></div>
+  <form method="post" action="/_admin/profiles/add" class="form-row">
+    <label style="flex:1">slug<input name="slug" placeholder="例如 sports" required></label>
+    <label style="flex:1">名称<input name="name" placeholder="例如 体育" required></label>
+    <button class="btn primary" type="submit">创建</button>
+  </form>
+</section>
+
+<section class="panel">
+  <table>
+    <thead><tr><th>名称</th><th>slug</th><th>订阅</th><th></th></tr></thead>
+    <tbody>
+    {% for profile, sub_count in profiles %}
+      <tr>
+        <td><a href="/_admin/profiles/{{ profile.slug }}">{{ profile.name }}</a></td>
+        <td class="mono">{{ profile.slug }}</td>
+        <td>{{ sub_count }}</td>
+        <td class="nowrap">
+          <a class="btn small" href="/_admin/profiles/{{ profile.slug }}">编辑</a>
+          <form class="inline" method="post" action="/_admin/profiles/{{ profile.slug }}/delete" data-confirm="删除后关联的订阅链接也会失效，确定？">
+            <button class="btn small danger" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

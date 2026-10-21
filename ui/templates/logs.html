@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}访问日志 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>访问日志</h1>
+  <form method="get" class="form-row">
+    <label>状态码<input name="status" value="{{ status }}" placeholder="200 / 304 / 403"></label>
+    <button class="btn small" type="submit">筛选</button>
+    {% if status %}<a class="btn small" href="/_admin/logs">清除</a>{% endif %}
+  </form>
+</div>
+
+<section class="panel">
+  {% if (logs|length) %}
+  <table>
+    <thead><tr><th>时间</th><th>路径</th><th>请求 IP / 协议</th><th>状态</th><th>有效环境</th><th>原因</th><th>UA</th></tr></thead>
+    <tbody>
+    {% for log in logs %}
+      <tr>
+        <td class="small nowrap">{{ log.created_at|dt('%m-%d %H:%M:%S') }}</td>
+        <td class="mono">{{ log.path }}</td>
+        <td class="mono">{{ log.ip }}{% if log.request_ip_version %}<div><span class="badge">IPv{{ log.request_ip_version }}</span></div>{% endif %}</td>
+        <td>
+          {% if log.status == 200 %}<span class="badge ok">{{ log.status }}</span>
+          {% elif log.status == 304 %}<span class="badge">{{ log.status }}</span>
+          {% else %}<span class="badge bad">{{ log.status }}</span>{% endif %}
+        </td>
+        <td class="small">{{ carrier_names.get(log.detected_carrier, '-') }}<div class="muted">{{ region_names.get(log.detected_region, '-') }}</div></td>
+        <td class="small muted">{{ {'auto':'IP 自动识别','cidr':'网段绑定','viewer':'固定环境','query':'参数覆盖','not_modified':'内容未变更','bad_token':'令牌错误','ip_not_allowed':'白名单拒绝'}.get(log.reason, log.reason or '') }}</td>
+        <td class="small muted" style="max-width:280px">{{ log.user_agent or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">暂无日志。</p>
+  {% endif %}
+</section>
+{% endblock %}

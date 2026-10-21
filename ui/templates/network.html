@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}访问者识别 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">NETWORK INTELLIGENCE</div><h1>让合适的线路，找到合适的屏幕</h1><p class="page-description">识别访问 IP 的运营商、地区与地址类型，查看订阅实际会输出哪些频道。</p></div><a class="btn" href="/_admin/subscriptions">管理订阅 {{ icon('arrow', 16) }}</a></div>
+<div class="network-summary"><div>{{ icon('globe', 24) }}<strong>公网归属</strong><span>运营商与省级地区</span></div><div>{{ icon('signal', 24) }}<strong>地址类型</strong><span>按实际请求识别 IPv4 / IPv6</span></div><div>{{ icon('shield', 24) }}<strong>保守过滤</strong><span>未知能力不默认放行</span></div></div>
+<section class="panel">
+  <div class="panel-head"><div><h2>网络诊断</h2><p class="muted small">当前访问 IP：<span class="mono">{{ request_ip or '未知' }}</span>。留空可测试当前连接。</p></div><span class="badge {{ 'ok' if lookup_enabled else '' }}">在线查询{{ '已开启' if lookup_enabled else '已关闭' }}</span></div>
+  <form method="get" class="form-row network-form">
+    <label>访问者 IP<input name="ip" value="{{ candidate }}" placeholder="例如 240e::1 或公网 IPv4"></label>
+    <label>同时预览订阅<select name="subscription_id"><option value="">仅诊断自动识别环境</option>{% for sub in subscriptions %}<option value="{{ sub.id }}" {{ 'selected' if selected and selected.id == sub.id }}>{{ sub.name }}{{ ' · 固定环境' if sub.viewer_id else ' · 自动识别' }}</option>{% endfor %}</select></label>
+    <button class="btn primary" type="submit">{{ icon('search', 17) }} 开始诊断</button>
+  </form>
+  {% if resolved %}
+  <div class="diagnostic-grid">
+    <div><span>待测 IP 地址类型</span><strong>{{ 'IPv' ~ info.version if info.version else '未知' }}</strong><small>{{ info.ip or 'IP 格式无效' }}</small></div>
+    <div><span>有效运营商</span><strong>{{ carrier_names.get(resolved.viewer.carrier, '未知') }}</strong><small>{{ info.isp or '无公网 ISP 数据' }}</small></div>
+    <div><span>有效地区</span><strong>{{ '未识别' if resolved.viewer.automatic and resolved.viewer.region == 'national' else region_names.get(resolved.viewer.region, '未知') }}</strong><small>{{ info.location or '未取得公网归属地' }}</small></div>
+    <div><span>环境来源</span><strong>{{ {'viewer':'订阅固定环境','cidr':'网段绑定','auto':'IP 自动识别','query':'参数覆盖'}.get(resolved.source, resolved.source) }}</strong><small>{{ resolved.viewer.label }}</small></div>
+  </div>
+  <p class="notice">{{ info.message }}{% if resolved.source == 'viewer' %} 此订阅已绑定固定环境，过滤时优先采用绑定的配置。{% elif resolved.source == 'cidr' %} 此 IP 命中了网段规则，网络能力采用绑定环境。{% endif %}</p>
+  {% if result %}
+  <div class="preview-summary"><strong>{{ result.stats.channels_emitted }} <span>个频道</span></strong><strong>{{ result.stats.streams_emitted }} <span>条线路</span></strong><span class="muted">按「{{ selected.name }}」的内容规则筛选</span></div>
+  <div class="chip-list">{% for reason, count in result.stats.reasons.items() %}<span class="badge">{{ reason }} · {{ count }}</span>{% endfor %}</div>
+  <details style="margin-top:16px"><summary>查看输出的频道与线路</summary><div class="table-scroll"><table><thead><tr><th>台号</th><th>频道</th><th>分组</th><th>线路数</th></tr></thead><tbody>{% for ch in result.channels %}<tr><td>{{ ch.chno }}</td><td>{{ ch.name }}</td><td>{{ ch.group }}</td><td>{{ ch.streams|length }}</td></tr>{% else %}<tr><td colspan="4" class="empty">没有符合条件的频道，请核对内容规则和线路属性。</td></tr>{% endfor %}</tbody></table></div></details>
+  {% endif %}
+  {% else %}<div class="diagnostic-idle">{{ icon('network', 28) }}<div><strong>准备好，检查一次网络匹配</strong><p>输入 IP 并选择订阅，即可查看识别结果和过滤原因。</p></div></div>{% endif %}
+</section>
+<div class="grid-2">
+<section class="panel"><div class="panel-head"><h2>识别设置</h2></div>
+  <form method="post" action="/_admin/network/settings">
+    <label class="check switch-row"><input type="checkbox" name="ip_lookup_enabled" value="1" {{ 'checked' if lookup_enabled }}><span><strong>启用访问者归属识别</strong><small>当前访问者直接使用 Cloudflare 的地区与 ASN 信息；手动诊断其他公网 IP 时使用 ipwho.is。</small></span></label>
+    <label style="margin-top:20px">网段绑定规则<textarea name="ip_network_rules" rows="6" placeholder="# 一行一条：网段,网络环境名称&#10;192.168.1.0/24,客厅电视">{{ network_rules }}</textarea></label>
+    <p class="muted small">自动识别订阅优先匹配最具体的网段。适合配置内网、双栈和 IPTV 专网能力。</p>
+    {% if (viewers|length) %}<p class="small muted">可绑定的环境：{% for v in viewers %}<span class="badge">{{ v.name }}</span> {% endfor %}</p>{% endif %}
+    <button class="btn primary" type="submit">保存识别设置</button>
+  </form>
+</section>
+<section class="panel"><div class="panel-head"><h2>自动识别的边界</h2></div><ol class="steps"><li><strong>订阅选择「自动识别」</strong><p>绑定固定网络环境的订阅继续使用指定配置。自动识别不再套用默认环境。</p></li><li><strong>请求只能证明当前使用的协议</strong><p>IPv4 请求不代表设备没有 IPv6，反之亦然。确认双栈后，可通过网段绑定或固定环境放行两类线路。</p></li><li><strong>IP 归属不能证明专网可达</strong><p>自动识别默认排除 IPTV 专网；需通过环境档案明确配置。VPN、代理和移动网络可能影响归属准确性。</p></li><li><strong>真实 IP 由 Cloudflare 提供</strong><p>云端只信任平台注入的客户端信息，不接受访问者自行提交的运营商、地区或 X-Forwarded-For。</p></li></ol><a href="/_admin/viewers" class="text-link">配置网络环境 {{ icon('arrow', 16) }}</a></section>
+</div>
+{% endblock %}

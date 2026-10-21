@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "iptv-source-cloudflare",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-20",
+  "assets": {
+    "directory": "./.generated/public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "iptv-source-db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "vars": {
+    "APP_NAME": "IPTV Source Manager",
+    "ENABLE_PLAY_PROXY": "false",
+  },
+  "triggers": { "crons": ["17 19 * * *"] },
+  "observability": { "enabled": true },
+}

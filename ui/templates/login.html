@@ -1,0 +1,36 @@
+{% from '_icons.html' import icon %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · IPTV 管理</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css?v=4">
+</head>
+<body class="login-body">
+  <section class="login-story">
+    <a class="brand" href="/_admin"><span class="brand-mark">{{ icon('tv', 23) }}</span><span class="brand-text">IPTV<span>源管理工作台</span></span></a>
+    <div class="eyebrow">ONE LIBRARY. EVERY SCREEN.</div>
+    <h2>好频道，<br>值得被好好整理。</h2>
+    <p>将分散的直播源汇成一个频道库，<br>让每一位家人、每一块屏幕，都有自己的播放列表。</p>
+    {% include '_signal_art.html' %}
+    <p class="small">统一整理 &nbsp; / &nbsp; 按需分发 &nbsp; / &nbsp; 自由观看</p>
+  </section>
+  <div class="login-side">
+  <form class="login-card" method="post" action="/_admin/login">
+    <div><div class="eyebrow">WELCOME BACK</div><h1>欢迎回来</h1><p class="muted">登录 IPTV 工作台，继续整理你的频道。</p></div>
+    {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+    <label>用户名
+      <input name="username" value="{{ username_input or 'admin' }}" autocomplete="username" autofocus required placeholder="输入用户名">
+    </label>
+    <label>密码
+      <input name="password" type="password" autocomplete="current-password" required placeholder="输入登录密码">
+    </label>
+    <input type="hidden" name="next_url" value="{{ request.query_params.get('next', '/_admin') }}">
+    <button class="btn primary block" type="submit">进入工作台 {{ icon('arrow', 17) }}</button>
+    <p class="hint">请使用部署时初始化的管理员账号登录。</p>
+  </form>
+  </div>
+</body>
+</html>

@@ -1,0 +1,57 @@
+{% from '_icons.html' import icon %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}IPTV 管理{% endblock %}</title>
+  <meta name="theme-color" content="#f5f7fa">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css?v=4">
+</head>
+<body>
+<a class="skip-link" href="#main-content">跳到主要内容</a>
+{% if username %}
+<div class="layout">
+  <aside class="sidebar" id="sidebar" aria-label="主导航">
+    <a class="brand" href="/_admin"><span class="brand-mark">{{ icon('tv', 23) }}</span><span class="brand-text">IPTV<span>源管理工作台</span></span></a>
+    <nav>
+      {% for group, items in navigation %}
+        <div class="nav-label">{{ group }}</div>
+        {% for label, href, glyph in items %}
+        {% set active = (path in ['/_admin', '/_admin/']) if href == '/_admin' else path.startsWith(href) %}
+        <a href="{{ href }}" class="{{ 'active' if active }}" {% if active %}aria-current="page"{% endif %}>{{ icon(glyph, 18) }}<span>{{ label }}</span>{% if active %}<span class="nav-dot"></span>{% endif %}</a>
+        {% endfor %}
+      {% endfor %}
+    </nav>
+    <div class="sidebar-note">{{ icon('signal', 18) }}<div><strong>你的频道，由你掌握</strong><span>统一整理 · 按需分发</span></div></div>
+    <div class="sidebar-foot">
+      <span class="avatar">{{ username[0]|upper }}</span><div><strong>{{ username }}</strong><span>管理员</span></div>
+      <form method="post" action="/_admin/logout"><button class="icon-btn" aria-label="退出登录" title="退出登录">{{ icon('logout', 18) }}</button></form>
+    </div>
+  </aside>
+  <button class="nav-backdrop" type="button" data-nav-close aria-label="关闭导航" hidden></button>
+  <div class="workspace">
+    <header class="topbar">
+      <button type="button" class="icon-btn mobile-menu" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="打开导航">{{ icon('menu') }}</button>
+      <div class="breadcrumb">工作空间<span>/</span><strong>{{ page_title }}</strong></div>
+      <form class="global-search" method="get" action="/_admin/channels" role="search"><button class="search-trigger" type="button" data-search-focus aria-label="搜索频道">{{ icon('search', 17) }}</button><input name="q" placeholder="搜索频道…" aria-label="搜索频道"><kbd>/</kbd></form>
+      <a class="top-play" href="/_admin/play">{{ icon('play', 17) }}<span>打开播放器</span></a>
+    </header>
+  <main class="main" id="main-content">
+{% else %}
+<main class="main solo" id="main-content">
+{% endif %}
+
+  {% if msg %}<div class="flash ok" role="status">{{ icon('check', 18) }}<span>{{ msg }}</span></div>{% endif %}
+  {% if err %}<div class="flash err" role="alert">{{ err }}</div>{% endif %}
+
+  {% block content %}{% endblock %}
+
+</main>
+{% if username %}<footer class="workspace-foot"><span>IPTV Source Manager</span><span>为每一块屏幕，整理好频道。</span></footer></div></div>{% endif %}
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+{% block scripts %}{% endblock %}
+<script src="/static/app.js?v=4"></script>
+</body>
+</html>

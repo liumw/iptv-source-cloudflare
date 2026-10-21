@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}概览 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><div class="eyebrow">YOUR STREAMING WORKSPACE</div><h1>频道，一切井然有序。</h1><p class="page-description">从源到屏幕，在这里管理你的直播世界。</p></div>
+  <div class="actions">
+    <a class="btn" href="/_admin/sources">{{ icon('plus', 16) }} 添加直播源</a>
+  </div>
+</div>
+
+{% if user.must_change_password %}
+<div class="flash warn">
+  当前使用初始化密码，建议先到 <a href="/_admin/settings">系统设置</a> 修改。
+</div>
+{% endif %}
+
+<section class="hero">
+  <div><div class="eyebrow">ONE LIBRARY. EVERY SCREEN.</div><h2>一个频道库，连接每一块屏幕。</h2><p>整理直播源，为家人定制内容，让不同网络各取所需。</p><div class="actions"><a class="btn primary" href="/_admin/play">{{ icon('play', 16) }} 开始观看</a><a class="btn" href="/_admin/network">检查网络匹配 {{ icon('arrow', 16) }}</a></div></div>
+  {% include '_signal_art.html' %}
+</section>
+<div class="cards dashboard-stats">
+  {% for label, value, glyph, note in dashboard_cards %}
+  <div class="card"><div class="stat-head"><span class="label">{{ label }}</span><span class="stat-icon">{{ icon(glyph, 17) }}</span></div><span class="num">{{ value }}</span><div class="stat-note">{{ note }}</div></div>
+  {% endfor %}
+</div>
+<div class="mini-metrics"><span><strong>{{ counts.sources }}</strong> 个直播源</span><span><strong>{{ counts.review }}</strong> 个频道待确认</span><a href="/_admin/review">整理频道库 {{ icon('arrow', 14) }}</a></div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>订阅地址</h2>
+    <a class="btn small" href="/_admin/subscriptions">管理</a>
+  </div>
+  {% if (subscriptions|length) %}
+  <table>
+    <thead><tr><th>名称</th><th>内容</th><th>环境</th><th>地址</th><th></th></tr></thead>
+    <tbody>
+    {% for sub in subscriptions %}
+      <tr>
+        <td>{{ sub.name }}</td>
+        <td><span class="badge">{{ sub.profile.name }}</span></td>
+        <td>{{ sub.viewer.name if sub.viewer else '自动识别' }}</td>
+        <td class="mono">
+          {% if sub.access_token %}<span title="使用右侧按钮复制完整地址">{{ base_url }}/{{ sub.path }}?token=••••••••</span>{% else %}{{ base_url }}/{{ sub.path }}{% endif %}
+        </td>
+        <td><button class="btn small" data-copy="{{ base_url }}/{{ sub.path }}{% if sub.access_token %}?token={{ sub.access_token }}{% endif %}">复制</button></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">还没有订阅链接。</p>
+  {% endif %}
+</section>
+
+<div class="dashboard-secondary">
+<section class="panel">
+  <div class="panel-head">
+    <h2>源状态</h2>
+    <a class="btn small" href="/_admin/sources">管理</a>
+  </div>
+  {% if (sources|length) %}
+  <table>
+    <thead><tr><th>名称</th><th>类型</th><th>状态</th><th>最近抓取</th><th>错误</th></tr></thead>
+    <tbody>
+    {% for source in sources %}
+      <tr>
+        <td>{{ source.name }}</td>
+        <td class="muted">{{ source.format }} / {{ source.origin }}</td>
+        <td>
+          {% if not source.enabled %}<span class="badge off">停用</span>
+          {% elif source.last_error %}<span class="badge bad">异常</span>
+          {% elif source.last_fetch_at %}<span class="badge ok">正常</span>
+          {% else %}<span class="badge">未抓取</span>{% endif %}
+        </td>
+        <td>{{ source.last_fetch_at|dt }}</td>
+        <td class="muted small">{{ source.last_error or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">频道库为空，请到源管理添加你自己的直播源。</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>最近访问</h2><a class="btn small" href="/_admin/logs">全部</a></div>
+  {% if (logs|length) %}
+  <table>
+    <thead><tr><th>时间</th><th>路径</th><th>IP</th><th>环境</th><th>状态</th></tr></thead>
+    <tbody>
+    {% for log in logs %}
+      <tr>
+        <td>{{ log.created_at|dt }}</td>
+        <td class="mono">{{ log.path }}</td>
+        <td class="mono">{{ log.ip }}</td>
+        <td>{{ carrier_names.get(log.detected_carrier, '-') }}{% if log.request_ip_version %} / IPv{{ log.request_ip_version }}{% endif %}</td>
+        <td>{{ log.status }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">暂无访问记录。</p>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

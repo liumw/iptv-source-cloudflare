@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}订阅链接 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>订阅链接</h1>
+  <span class="muted small">内容视图 × 网络环境 = 一条专属地址，请求时动态生成</span>
+</div>
+
+<p class="notice" style="margin-bottom:22px">需要按访问者自动筛选？将订阅的网络环境设为「自动识别」，系统会按 IP 查询运营商和地区。<a href="/_admin/network">诊断识别与过滤结果 →</a></p>
+
+{% if test_stats %}
+<section class="panel">
+  <div class="panel-head"><h2>测试：{{ test_subscription.name }}</h2><a class="btn small" href="/_admin/subscriptions">关闭</a></div>
+  <p class="muted small">环境：{{ test_viewer.label }}</p>
+  <div class="cards" style="grid-template-columns:repeat(2,1fr)">
+    <div class="card"><span class="num">{{ test_stats.channels_emitted }}</span><span class="label">输出频道 / {{ test_stats.channels_total }}</span></div>
+    <div class="card"><span class="num">{{ test_stats.streams_emitted }}</span><span class="label">输出线路 / {{ test_stats.streams_total }}</span></div>
+  </div>
+  {% if test_stats.reasons %}
+    <div style="margin-bottom:10px">
+      {% for reason, count in test_stats.reasons.items() %}<span class="badge">{{ reason }} {{ count }}</span> {% endfor %}
+    </div>
+  {% endif %}
+  {% if (test_stats.unavailable|length) %}
+    <details>
+      <summary>不可用频道（{{ test_stats.unavailable_total }}）</summary>
+      <ul class="small muted">
+        {% for item in test_stats.unavailable %}<li>{{ item.name }} — {{ item.label }}</li>{% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+  <details style="margin-top:10px">
+    <summary>m3u 预览</summary>
+    <pre class="code">{{ test_head }}</pre>
+  </details>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head"><h2>新建订阅</h2></div>
+  <form method="post" action="/_admin/subscriptions/add">
+    <div class="form-grid">
+      <label>名称<input name="name" placeholder="例如 爸妈家电视" required></label>
+      <label>内容视图
+        <select name="profile_id">
+          {% for p in profiles %}<option value="{{ p.id }}">{{ p.name }}（{{ p.slug }}）</option>{% endfor %}
+        </select>
+      </label>
+      <label>网络环境
+        <select name="viewer_id">
+          <option value="">自动识别</option>
+          {% for v in viewers %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>访问路径<input name="path" placeholder="例如 living 或 elders.m3u" required></label>
+      <label>访问令牌（可选）<input name="access_token" placeholder="留空则只靠路径保护"></label>
+      <label>缓存秒数<input name="cache_ttl" type="number" value="30"></label>
+      <label class="check"><input type="checkbox" name="allow_query_override" value="1"> 允许用 URL 参数覆盖环境（调试）</label>
+    </div>
+    <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">创建</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>全部订阅</h2></div>
+  {% if (subscriptions|length) %}
+  <table>
+    <thead><tr><th>名称</th><th>内容 / 环境</th><th>地址</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for sub in subscriptions %}
+      <tr>
+        <td>{{ sub.name }}</td>
+        <td>
+          <span class="badge">{{ sub.profile.name }}</span>
+          <span class="badge">{{ sub.viewer.name if sub.viewer else '自动识别' }}</span>
+        </td>
+        <td class="mono">
+          {{ base_url }}/{{ sub.path }}{% if sub.access_token %}?token={{ sub.access_token }}{% endif %}
+          {% if sub.path and not sub.enabled %}<div class="badge off">已停用</div>{% endif %}
+        </td>
+        <td>
+          {% if sub.enabled %}<span class="badge ok">启用</span>{% else %}<span class="badge off">停用</span>{% endif %}
+          {% if sub.access_token %}<span class="badge warn">token</span>{% endif %}
+          {% if sub.allow_query_override %}<span class="badge">可覆盖</span>{% endif %}
+        </td>
+        <td class="nowrap">
+          <button class="btn small" data-copy="{{ base_url }}/{{ sub.path }}{% if sub.access_token %}?token={{ sub.access_token }}{% endif %}">复制</button>
+          <a class="btn small" href="/_admin/subscriptions/{{ sub.id }}/test">测试</a>
+          <form class="inline" method="post" action="/_admin/subscriptions/{{ sub.id }}/delete" data-confirm="确定删除？">
+            <button class="btn small danger" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="5">
+          <details>
+            <summary>编辑</summary>
+            <form method="post" action="/_admin/subscriptions/{{ sub.id }}/update">
+              <div class="form-grid">
+                <label>名称<input name="name" value="{{ sub.name }}" required></label>
+                <label>内容视图
+                  <select name="profile_id">
+                    {% for p in profiles %}<option value="{{ p.id }}" {{ 'selected' if sub.profile_id == p.id }}>{{ p.name }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>网络环境
+                  <select name="viewer_id">
+                    <option value="" {{ 'selected' if sub.viewer_id == null }}>自动识别</option>
+                    {% for v in viewers %}<option value="{{ v.id }}" {{ 'selected' if sub.viewer_id == v.id }}>{{ v.name }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>访问路径<input name="path" value="{{ sub.path }}" required></label>
+                <label>访问令牌<input name="access_token" value="{{ sub.access_token or '' }}"></label>
+                <label>缓存秒数<input name="cache_ttl" type="number" value="{{ sub.cache_ttl }}"></label>
+                <label class="check"><input type="checkbox" name="allow_query_override" value="1" {{ 'checked' if sub.allow_query_override }}> 允许 URL 参数覆盖环境</label>
+                <label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if sub.enabled }}> 启用</label>
+              </div>
+              <div class="actions" style="margin-top:10px"><button class="btn small primary" type="submit">保存</button></div>
+            </form>
+          </details>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">还没有订阅链接。</p>
+  {% endif %}
+</section>
+{% endblock %}

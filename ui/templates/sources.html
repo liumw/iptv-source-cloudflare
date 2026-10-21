@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}源管理 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>源管理</h1>
+  <span class="muted small">支持 m3u / txt，来源可以是 URL、上传文件或直接粘贴</span>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><h2>添加源</h2></div><p class="notice">云端不能读取电脑路径。上传文件或粘贴文本后存入 D1；也可配置 URL 源。</p>
+  <form method="post" enctype="multipart/form-data" action="/_admin/sources/add">
+    <div class="form-grid">
+      <label>名称<input name="name" required placeholder="例如 我的直播源"></label>
+      <label>格式
+        <select name="format">
+          <option value="auto">自动识别</option>
+          <option value="m3u">M3U</option>
+          <option value="txt">TXT</option>
+        </select>
+      </label>
+      <label>来源
+        <select name="origin">
+          <option value="upload">上传文件</option>
+          <option value="url">URL</option>
+          <option value="inline">粘贴文本</option>
+        </select>
+      </label>
+      <label>优先级<input name="priority" type="number" value="0"></label>
+      <label>上传 M3U / TXT<input name="playlist_file" type="file" accept=".m3u,.m3u8,.txt"></label>
+      <label>URL<input name="url" placeholder="https://example.com/list.m3u"></label>
+      <label>默认网络
+        <select name="default_network">
+          <option value="auto">自动推断</option>
+          {% for n in networks %}<option value="{{ n }}">{{ network_labels[n] }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>默认运营商
+        <select name="default_carrier">
+          <option value="auto">自动推断</option>
+          {% for c in carriers %}<option value="{{ c }}">{{ carrier_labels[c] }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>默认区域
+        <select name="default_region">
+          <option value="auto">自动推断</option>
+          {% for code, label in regions.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" name="adult" value="1"> 成人源</label>
+      <label class="span-all">请求头 JSON<input name="headers_json" class="mono" value="{}"></label>
+      <label class="span-all">粘贴内容<textarea name="inline_text" placeholder="仅 origin=粘贴文本 时使用"></textarea></label>
+    </div>
+    <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">添加</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>源列表</h2></div>
+  {% if (sources|length) %}
+  <table>
+    <thead><tr><th>名称</th><th>类型</th><th>线路</th><th>状态</th><th>最近抓取</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for source, stream_count in sources %}
+      <tr>
+        <td>{{ source.name }}<div class="muted small">{{ source.file_path or source.url or '' }}</div></td>
+        <td class="muted small">{{ source.format }} / {{ source.origin }}<br>优先级 {{ source.priority }}</td>
+        <td>{{ stream_count }}</td>
+        <td>
+          {% if not source.enabled %}<span class="badge off">停用</span>
+          {% elif source.last_error %}<span class="badge bad">异常</span>
+          {% elif source.last_fetch_at %}<span class="badge ok">正常</span>
+          {% else %}<span class="badge">未抓取</span>{% endif %}
+          {% if source.last_http_status %}<span class="badge">{{ source.last_http_status }}</span>{% endif %}
+        </td>
+        <td class="small">{{ source.last_fetch_at|dt }}<div class="muted">{{ source.last_error or '' }}</div></td>
+        <td class="nowrap">
+          <form class="inline" method="post" action="/_admin/sources/{{ source.id }}/fetch">
+            <button class="btn small" type="submit">抓取</button>
+          </form>
+          <form class="inline" method="post" action="/_admin/sources/{{ source.id }}/fetch">
+            <input type="hidden" name="force" value="1">
+            <button class="btn small" type="submit">强制</button>
+          </form>
+          <form class="inline" method="post" action="/_admin/sources/{{ source.id }}/delete" data-confirm="删除后该源的线路也会一起删除，确定？">
+            <button class="btn small danger" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="6">
+          <details>
+            <summary>编辑源</summary>
+            <form method="post" enctype="multipart/form-data" action="/_admin/sources/{{ source.id }}/update">
+              <div class="form-grid">
+                <label>名称<input name="name" value="{{ source.name }}" required></label>
+                <label>格式
+                  <select name="format">
+                    {% for f in ['auto', 'm3u', 'txt'] %}<option value="{{ f }}" {{ 'selected' if source.format == f }}>{{ f }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>来源
+                  <select name="origin">
+                    {% for o in ['upload', 'url', 'inline'] %}<option value="{{ o }}" {{ 'selected' if source.origin == o }}>{{ o }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>优先级<input name="priority" type="number" value="{{ source.priority }}"></label>
+                <label>上传 M3U / TXT<input name="playlist_file" type="file" accept=".m3u,.m3u8,.txt"></label>
+                <label>URL<input name="url" value="{{ source.url or '' }}"></label>
+                <label>默认网络
+                  <select name="default_network">
+                    <option value="auto">自动推断</option>
+                    {% for n in networks %}<option value="{{ n }}" {{ 'selected' if source.default_network == n }}>{{ network_labels[n] }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>默认运营商
+                  <select name="default_carrier">
+                    <option value="auto">自动推断</option>
+                    {% for c in carriers %}<option value="{{ c }}" {{ 'selected' if source.default_carrier == c }}>{{ carrier_labels[c] }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>默认区域
+                  <select name="default_region">
+                    <option value="auto">自动推断</option>
+                    {% for code, label in regions.items() %}<option value="{{ code }}" {{ 'selected' if source.default_region == code }}>{{ label }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>请求头 JSON<input name="headers_json" class="mono" value="{{ source.headers_json }}"></label>
+                <label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if source.enabled }}> 启用</label>
+                <label class="check"><input type="checkbox" name="adult" value="1" {{ 'checked' if source.adult }}> 成人源</label>
+              </div>
+              <label style="margin-top:12px">粘贴内容（更新内联源）<textarea name="inline_text">{{ source.inline_text or "" }}</textarea></label><div class="actions" style="margin-top:10px"><button class="btn small primary" type="submit">保存</button></div>
+            </form>
+          </details>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">还没有源。</p>
+  {% endif %}
+</section>
+{% endblock %}

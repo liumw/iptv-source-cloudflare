@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}系统设置 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>系统设置</h1>
+</div>
+
+{% if test_result %}
+<div class="flash {{ 'ok' if test_result.allowed else 'err' }}">
+  测试 IP <span class="mono">{{ test_result.parsed or test_result.input }}</span>
+  → {{ '放行' if test_result.allowed else '拒绝' }}
+  {% if test_result.rule %}（命中规则 <span class="mono">{{ test_result.rule }}</span>）{% endif %}
+</div>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>播放列表 IP 白名单</h2>
+    <span class="muted small">留空 = 放行所有 IP，只影响播放列表，不影响后台</span>
+  </div>
+  <form id="settings-form" method="post" action="/_admin/settings/update">
+    <label>白名单（一行一个，支持 # 注释）
+      <textarea id="whitelist" name="playlist_ip_whitelist" rows="8" placeholder="# 家里&#10;192.168.1.0/24&#10;10.*.*.*&#10;192.168.1.10-192.168.1.20&#10;2001:db8::/32&#10;localhost">{{ whitelist }}</textarea>
+    </label>
+    <div class="form-grid" style="margin-top:12px">
+      <label>拒绝状态码<input name="whitelist_deny_status" value="{{ deny_status }}"></label>
+      <label>默认 User-Agent<input name="default_ua" value="{{ default_ua }}"></label>
+      <p class="notice">真实访问 IP 由 Cloudflare 提供，云端不接受客户端自报的 X-Forwarded-For。</p>
+    </div>
+    <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">保存设置</button></div>
+  </form>
+
+  <hr style="border-color:var(--border);margin:18px 0">
+
+  <form id="test-ip-form" method="post" action="/_admin/settings/test-ip" class="form-row">
+    <label style="flex:1">测试一个 IP
+      <input name="test_ip" placeholder="192.168.1.10 或 240e::1" required>
+    </label>
+    <input type="hidden" name="current_whitelist" id="test-whitelist">
+    <button class="btn" type="submit">测试</button>
+    <span class="muted small">测试使用上方当前编辑中的内容</span>
+  </form>
+  <script>
+    document.getElementById("test-ip-form").addEventListener("submit", function () {
+      document.getElementById("test-whitelist").value = document.getElementById("whitelist").value;
+    });
+  </script>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>解析结果</h2></div>
+  {% if (rules|length) %}
+    <table>
+      <thead><tr><th>规则</th><th>类型</th><th>IP 版本</th><th>范围</th></tr></thead>
+      <tbody>
+      {% for rule in rules %}
+        <tr>
+          <td class="mono">{{ rule.source }}</td>
+          <td>{{ rule.kind }}</td>
+          <td>IPv{{ rule.version }}</td>
+          <td class="mono small">
+            {% if rule.network %}{{ rule.network }}{% elif rule.start != null %}{{ rule.start }} - {{ rule.end }}{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted small">未配置规则，当前放行所有 IP。</p>
+  {% endif %}
+
+  {% if (errors|length) %}
+    <h3>无效行</h3>
+    {% for error in errors %}
+      <div class="flash err" style="margin-bottom:8px">第 {{ error.line_no }} 行 <span class="mono">{{ error.source }}</span>：{{ error.message }}</div>
+    {% endfor %}
+    <p class="muted small">如果所有行都无效，播放列表会拒绝所有访问（fail closed）。</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>修改密码</h2></div>
+  <form method="post" action="/_admin/settings/password">
+    <div class="form-grid">
+      <label>当前密码<input name="current_password" type="password" required></label>
+      <label>新密码<input name="new_password" type="password" required></label>
+      <label>确认新密码<input name="confirm_password" type="password" required></label>
+    </div>
+    <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">修改密码</button></div>
+  </form>
+</section>
+{% endblock %}

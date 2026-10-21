@@ -1,0 +1,3 @@
+# 本地开发读取 .dev.vars；pnpm deploy 通过 secrets-file 上传为 Cloudflare Secret。
+# 复制本文件后替换为至少 32 字符的随机值，不要原样使用此示例。
+SESSION_SECRET=""

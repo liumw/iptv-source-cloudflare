@@ -1,0 +1,53 @@
+{
+  "name": "iptv-source-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format": "prettier --write src scripts test package.json tsconfig.json wrangler.jsonc",
+    "format:check": "prettier --check src scripts test package.json tsconfig.json wrangler.jsonc",
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs && wrangler dev --port 8787",
+    "check": "node scripts/build.mjs && tsc --noEmit",
+    "test": "node scripts/build.mjs && tsx --test test/*.test.ts",
+    "deploy": "node scripts/deploy.mjs",
+    "db:local": "wrangler d1 migrations apply iptv-source-db --local",
+    "db:remote": "wrangler d1 migrations apply iptv-source-db --remote",
+    "deploy:check": "node scripts/build.mjs && wrangler deploy --dry-run",
+    "init:admin": "node scripts/init-admin.mjs",
+    "db:init:local": "wrangler d1 execute iptv-source-db --local --file private/bootstrap.sql",
+    "db:init:remote": "wrangler d1 execute iptv-source-db --remote --file private/bootstrap.sql"
+  },
+  "dependencies": {
+    "hono": "^4.10.0",
+    "ipaddr.js": "^2.2.0",
+    "nunjucks": "^3.2.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "@types/node": "^24.0.0",
+    "@types/nunjucks": "^3.2.6",
+    "esbuild": "^0.25.0",
+    "jsonc-parser": "^3.3.1",
+    "miniflare": "5.20261019.0-beta",
+    "prettier": "^3.9.10",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.0.0"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "description": "Source-free IPTV channel manager for Cloudflare Workers and D1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/liumw/iptv-source-cloudflare.git"
+  },
+  "homepage": "https://github.com/liumw/iptv-source-cloudflare#readme",
+  "bugs": {
+    "url": "https://github.com/liumw/iptv-source-cloudflare/issues"
+  },
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=11"
+  }
+}

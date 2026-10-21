@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}网络环境 · IPTV 管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>网络环境</h1>
+  <span class="muted small">描述用户能访问什么网络，用于逐条线路过滤</span>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><h2>新增环境档案</h2></div>
+  <form method="post" action="/_admin/viewers/add">
+    <div class="form-grid">
+      <label>名称<input name="name" placeholder="例如 老家电视" required></label>
+      <label>运营商
+        <select name="carrier">
+          {% for c in ['unknown'] + carriers|list %}<option value="{{ c }}">{{ carrier_labels.get(c, c) }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>区域
+        <select name="region">
+          {% for code, label in regions.items() %}<option value="{{ code }}" {{ 'selected' if code == 'national' }}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="span-all">备注<input name="notes" placeholder="可选"></label>
+      <label class="check"><input type="checkbox" name="supports_ipv4" value="1" checked> 支持 IPv4</label>
+      <label class="check"><input type="checkbox" name="supports_ipv6" value="1"> 支持 IPv6</label>
+      <label class="check"><input type="checkbox" name="supports_iptv" value="1"> 有 IPTV 专网</label>
+    </div>
+    <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">添加</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>环境列表</h2></div>
+  {% if (viewers|length) %}
+  <table>
+    <thead><tr><th>名称</th><th>运营商</th><th>网络能力</th><th>区域</th><th>默认</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for v in viewers %}
+      <tr>
+        <td>{{ v.name }}<div class="muted small">{{ v.notes or '' }}</div></td>
+        <td>{{ carrier_labels.get(v.carrier, v.carrier) }}</td>
+        <td>
+          {% if v.supports_ipv4 %}<span class="badge">IPv4</span>{% endif %}
+          {% if v.supports_ipv6 %}<span class="badge accent">IPv6</span>{% endif %}
+          {% if v.supports_iptv %}<span class="badge accent">IPTV</span>{% endif %}
+        </td>
+        <td>{{ regions.get(v.region, v.region) }}</td>
+        <td>{% if v.is_default %}<span class="badge ok">默认</span>{% endif %}</td>
+        <td class="nowrap">
+          <form class="inline" method="post" action="/_admin/viewers/{{ v.id }}/delete" data-confirm="删除后绑定该环境的订阅会变成自动识别，确定？">
+            <button class="btn small danger" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="6">
+          <details>
+            <summary>编辑</summary>
+            <form method="post" action="/_admin/viewers/{{ v.id }}/update">
+              <div class="form-grid">
+                <label>名称<input name="name" value="{{ v.name }}" required></label>
+                <label>运营商
+                  <select name="carrier">
+                    {% for c in ['unknown'] + carriers|list %}<option value="{{ c }}" {{ 'selected' if v.carrier == c }}>{{ carrier_labels.get(c, c) }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>区域
+                  <select name="region">
+                    {% for code, label in regions.items() %}<option value="{{ code }}" {{ 'selected' if v.region == code }}>{{ label }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label>备注<input name="notes" value="{{ v.notes or '' }}"></label>
+                <label class="check"><input type="checkbox" name="supports_ipv4" value="1" {{ 'checked' if v.supports_ipv4 }}> 支持 IPv4</label>
+                <label class="check"><input type="checkbox" name="supports_ipv6" value="1" {{ 'checked' if v.supports_ipv6 }}> 支持 IPv6</label>
+                <label class="check"><input type="checkbox" name="supports_iptv" value="1" {{ 'checked' if v.supports_iptv }}> 有 IPTV 专网</label>
+                <label class="check"><input type="checkbox" name="is_default" value="1" {{ 'checked' if v.is_default }}> 设为默认环境</label>
+              </div>
+              <div class="actions" style="margin-top:10px"><button class="btn small primary" type="submit">保存</button></div>
+            </form>
+          </details>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">还没有环境档案。</p>
+  {% endif %}
+</section>
+{% endblock %}
