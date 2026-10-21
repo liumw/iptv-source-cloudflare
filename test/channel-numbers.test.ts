@@ -79,6 +79,17 @@ after(async () => {
 
 for (const mode of ['auto', 'fixed', 'none'])
   test(`${mode} subscriptions preserve authoritative manual numbers, zero and all lines`, async () => {
+    const options = (await (
+      await request('/_admin/profiles/numbered/channel-options')
+    ).json()) as any;
+    assert.deepEqual(
+      options.channels.map((channel: any) => channel.chno),
+      [0, 1, 88, null, null],
+    );
+    assert.deepEqual(
+      options.channels.slice(0, 3).map((channel: any) => channel.id),
+      [3, 1, 4],
+    );
     await db
       .prepare('UPDATE profiles SET config_json=? WHERE id=1')
       .bind(

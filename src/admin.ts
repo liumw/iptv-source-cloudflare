@@ -716,9 +716,15 @@ admin.get('/_admin/profiles/:slug/channel-options', async (c) => {
   const store = c.get('store'),
     profile = await store.one('SELECT * FROM profiles WHERE slug=?', [c.req.param('slug')]);
   if (!profile) return c.json({ error: '内容视图不存在' }, 404);
-  const channels = (await channelRows(store)).filter(
-    (ch) => ch.enabled && (ch.reviewed || !ch.auto_created),
-  );
+  const channels = (await channelRows(store))
+    .filter((ch) => ch.enabled && (ch.reviewed || !ch.auto_created))
+    .sort(
+      (a, b) =>
+        Number(a.chno == null) - Number(b.chno == null) ||
+        (a.chno ?? 0) - (b.chno ?? 0) ||
+        a.name.localeCompare(b.name) ||
+        a.id - b.id,
+    );
   const selected = await store.all(
     'SELECT channel_id FROM profile_channels WHERE profile_id=? AND include=1',
     [profile.id],
@@ -728,6 +734,7 @@ admin.get('/_admin/profiles/:slug/channel-options', async (c) => {
       id: ch.id,
       name: ch.name,
       key: ch.key,
+      chno: ch.chno,
       group: ch.group?.name ?? '未分组',
       adult: !!ch.adult,
     })),

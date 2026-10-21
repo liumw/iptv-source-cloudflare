@@ -288,7 +288,23 @@ details[open] summary { margin-bottom: 14px; color: var(--accent); }
 .channel-option:last-child { border-bottom: 0; }
 .channel-option[hidden] { display: none; }
 .channel-option:hover { background: rgba(255,255,255,.025); }
-.channel-option .channel-name { flex: 1; min-width: 0; }
+.channel-option .channel-chno {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 3.5em;
+  min-height: 30px;
+  padding: 3px 6px;
+  border: 1px solid #cce2e8;
+  border-radius: 6px;
+  background: #edf7f8;
+  color: var(--accent-2);
+  font: 700 15px/1.2 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.channel-option .channel-chno.is-empty { border-style: dashed; background: var(--bg-soft); color: var(--muted); }
+.channel-option .channel-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .channel-option .channel-meta { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
 body.modal-open { overflow: hidden; }
 

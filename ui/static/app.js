@@ -140,6 +140,7 @@ async function loadChannelOptions(modal) {
     const response = await fetch(modal.dataset.optionsUrl, {
       headers: { Accept: "application/json" },
       credentials: "same-origin",
+      cache: "no-store",
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     data = await response.json();
@@ -175,13 +176,20 @@ async function loadChannelOptions(modal) {
   data.channels.forEach((channel) => {
     const label = document.createElement("label");
     label.className = "channel-option";
-    label.dataset.search = `${channel.name} ${channel.key} ${channel.group}`.toLowerCase();
+    label.dataset.search = `${channel.chno ?? ''} ${channel.name} ${channel.key} ${channel.group}`.toLowerCase();
 
     const box = document.createElement("input");
     box.type = "checkbox";
     box.name = "channel_ids";
     box.value = String(channel.id);
     box.checked = selected.has(String(channel.id));
+
+    const number = document.createElement("span");
+    number.className = "channel-chno";
+    number.textContent = channel.chno != null ? String(channel.chno) : "—";
+    number.title = channel.chno != null ? `台号 ${channel.chno}` : "未设置台号";
+    number.setAttribute("aria-label", number.title);
+    if (channel.chno == null) number.classList.add("is-empty");
 
     const name = document.createElement("span");
     name.className = "channel-name";
@@ -191,7 +199,7 @@ async function loadChannelOptions(modal) {
     meta.className = "channel-meta";
     meta.textContent = `${channel.group} · ${channel.key}`;
 
-    label.append(box, name);
+    label.append(box, number, name);
     if (channel.adult) {
       const badge = document.createElement("span");
       badge.className = "badge bad";
